@@ -1,8 +1,11 @@
 apply plugin: 'war'
 
 dependencies {
+    // server在集群模式也是需要去其他server注册的
     compile project(':eureka-client')
+    // core: 处理核心的服务注册请求, 信条, 故障摘除等...
     compile project(':eureka-core')
+    // 类比于spring-mvc框架, client和server之间的调用.
     compile "com.sun.jersey:jersey-server:$jerseyVersion"
     compile "com.sun.jersey:jersey-servlet:$jerseyVersion"
     compile 'org.slf4j:slf4j-log4j12:1.6.1'
@@ -11,22 +14,26 @@ dependencies {
     runtimeOnly 'xerces:xercesImpl:2.12.0'
     runtimeOnly 'org.codehaus.jettison:jettison:1.2'
 
+    // web应用, 使用jetty做测试的web容器
     providedCompile "javax.servlet:servlet-api:$servletVersion"
 
-    testCompile project(':eureka-test-utils')
-    testCompile "org.mockito:mockito-core:${mockitoVersion}"
     testCompile "org.eclipse.jetty:jetty-server:$jetty_version"
     testCompile "org.eclipse.jetty:jetty-webapp:$jetty_version"
+    testCompile project(':eureka-test-utils')
+    testCompile "org.mockito:mockito-core:${mockitoVersion}"
 }
 
+// 没啥用: 打war包没用上, 就是把运行的依赖拷贝一个当前classpath:testlibs文件下....
 task copyLibs(type: Copy) {
     into 'testlibs/WEB-INF/libs'
     from configurations.runtime
 }
 
+// WAR包准备: 把resource的main目录下的静态文件拷贝到war里面
 war {
     from (project(':eureka-resources').file('build/resources/main'))
 }
 
+// 依赖war命令, 确保有
 // Integration test loads eureka war, so it must be ready prior to running tests
 test.dependsOn war
