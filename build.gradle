@@ -2,7 +2,8 @@ buildscript {
     repositories { jcenter() }
 
     dependencies {
-        classpath 'com.netflix.nebula:gradle-extra-configurations-plugin:2.2.+'
+//        classpath 'com.netflix.nebula:gradle-extra-configurations-plugin:2.2.+'
+        classpath 'com.netflix.nebula:gradle-extra-configurations-plugin:3.2.0'
     }
 }
 
@@ -73,7 +74,8 @@ subprojects {
 
     jar {
         manifest {
-            attributes('Build-Time-ISO-8601': new Date().format("yyyy-MM-dd'T'HH:mm:ssZ"))
+//            attributes('Build-Time-ISO-8601': new Date().format("yyyy-MM-dd'T'HH:mm:ssZ"))
+            attributes('Build-Time-ISO-8601': "yyyy-MM-dd'T'HH:mm:ssZ")
         }
     }
 }
