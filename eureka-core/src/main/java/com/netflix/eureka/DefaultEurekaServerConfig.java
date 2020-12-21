@@ -16,27 +16,15 @@
 
 package com.netflix.eureka;
 
-import java.io.IOException;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
+import com.netflix.config.*;
+import com.netflix.eureka.aws.AwsBindingStrategy;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 import javax.inject.Singleton;
-
-import com.netflix.config.ConfigurationManager;
-import com.netflix.config.DynamicBooleanProperty;
-import com.netflix.config.DynamicIntProperty;
-import com.netflix.config.DynamicPropertyFactory;
-import com.netflix.config.DynamicStringProperty;
-import com.netflix.config.DynamicStringSetProperty;
-import com.netflix.eureka.aws.AwsBindingStrategy;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import java.io.IOException;
+import java.util.*;
 
 /**
  *
@@ -60,6 +48,11 @@ import org.slf4j.LoggerFactory;
  *
  * @author Karthik Ranganathan
  *
+ *
+ * 1. 使用DynamicPropertiesFactory 包装起来ConfigurationManager, 操作里面的instance
+ * 2. 加载application.properties和application-env.properties配置文件
+ * 3. 通过DynamicPropertiesFactory管理eureka的namespace下的配置项.
+ *
  */
 @Singleton
 public class DefaultEurekaServerConfig implements EurekaServerConfig {
@@ -70,9 +63,12 @@ public class DefaultEurekaServerConfig implements EurekaServerConfig {
             .getLogger(DefaultEurekaServerConfig.class);
     private static final DynamicPropertyFactory configInstance = com.netflix.config.DynamicPropertyFactory
             .getInstance();
+    // 配置文件名字: 从DynamicPropertiesFactory里面拿到properties(默认就是ConfigurationManager), 然后拿到配置项
+    //              dynamicPropertiesFactory还会把properties支持DynamicProperty, 大家就都可以拿到配置了...太麻烦了.
     private static final DynamicStringProperty EUREKA_PROPS_FILE = DynamicPropertyFactory
             .getInstance().getStringProperty("eureka.server.props",
                     "eureka-server");
+
     private static final int TIME_TO_WAIT_FOR_REPLICATION = 30000;
 
     private String namespace = "eureka.";
@@ -102,17 +98,24 @@ public class DefaultEurekaServerConfig implements EurekaServerConfig {
     }
 
     private void init() {
+        // 1. 从configManager里拿环境, 然后设置一下部署的环境
         String env = ConfigurationManager.getConfigInstance().getString(
                 EUREKA_ENVIRONMENT, TEST);
         ConfigurationManager.getConfigInstance().setProperty(
                 ARCHAIUS_DEPLOYMENT_ENVIRONMENT, env);
 
+        // 2. 拿到properties文件 参数.
+        //     // 配置文件名字: 从DynamicPropertiesFactory里面拿到properties(默认就是ConfigurationManager), 然后拿到配置项
+        //          默认的就是eureka-server.properties.
         String eurekaPropsFile = EUREKA_PROPS_FILE.get();
         try {
             // ConfigurationManager
             // .loadPropertiesFromResources(eurekaPropsFile);
-            ConfigurationManager
-                    .loadCascadedPropertiesFromResources(eurekaPropsFile);
+
+            // 3. 加载这些配置项到ConfigurationManager里/
+            //      1. 加载 configName.properties和configName-env.properties两个文件
+            //      2. 把加载的properties放到ConfigurationManager里面的instant里.
+            ConfigurationManager.loadCascadedPropertiesFromResources(eurekaPropsFile);
         } catch (IOException e) {
             logger.warn(
                     "Cannot find the properties specified : {}. This may be okay if there are other environment "

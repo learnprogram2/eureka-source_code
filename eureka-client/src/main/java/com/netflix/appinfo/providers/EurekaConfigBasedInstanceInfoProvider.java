@@ -1,20 +1,15 @@
 package com.netflix.appinfo.providers;
 
-import javax.inject.Singleton;
-import javax.inject.Provider;
-import java.util.Map;
-
 import com.google.inject.Inject;
-import com.netflix.appinfo.DataCenterInfo;
-import com.netflix.appinfo.EurekaInstanceConfig;
-import com.netflix.appinfo.InstanceInfo;
+import com.netflix.appinfo.*;
 import com.netflix.appinfo.InstanceInfo.InstanceStatus;
 import com.netflix.appinfo.InstanceInfo.PortType;
-import com.netflix.appinfo.LeaseInfo;
-import com.netflix.appinfo.RefreshableInstanceConfig;
-import com.netflix.appinfo.UniqueIdentifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import javax.inject.Provider;
+import javax.inject.Singleton;
+import java.util.Map;
 
 /**
  * InstanceInfo provider that constructs the InstanceInfo this this instance using
@@ -42,6 +37,7 @@ public class EurekaConfigBasedInstanceInfoProvider implements Provider<InstanceI
         this.config = config;
     }
 
+    //
     @Override
     public synchronized InstanceInfo get() {
         if (instanceInfo == null) {
@@ -55,8 +51,10 @@ public class EurekaConfigBasedInstanceInfoProvider implements Provider<InstanceI
             }
 
             // Builder the instance information to be registered with eureka server
+            // 使用构造器创建 instanceInfo
             InstanceInfo.Builder builder = InstanceInfo.Builder.newBuilder(vipAddressResolver);
 
+            // 下面就是从config中取值, 然后build InstanInfo了.
             // set the appropriate id for the InstanceInfo, falling back to datacenter Id if applicable, else hostname
             String instanceId = config.getInstanceId();
             if (instanceId == null || instanceId.isEmpty()) {
@@ -108,8 +106,8 @@ public class EurekaConfigBasedInstanceInfoProvider implements Provider<InstanceI
                 builder.setStatus(initialStatus);
             } else {
                 LOG.info("Setting initial instance status as: {}. This may be too early for the instance to advertise "
-                         + "itself as available. You would instead want to control this via a healthcheck handler.",
-                         InstanceStatus.UP);
+                                + "itself as available. You would instead want to control this via a healthcheck handler.",
+                        InstanceStatus.UP);
             }
 
             // Add any user-specific metadata information

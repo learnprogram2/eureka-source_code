@@ -15,15 +15,15 @@
  */
 package com.netflix.appinfo;
 
-import java.util.Iterator;
-import java.util.LinkedHashMap;
-import java.util.Map;
-
 import com.netflix.config.ConfigurationManager;
 import com.netflix.config.DynamicPropertyFactory;
 import com.netflix.discovery.CommonConstants;
 import com.netflix.discovery.internal.util.Archaius1Utils;
 import org.apache.commons.configuration.Configuration;
+
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 import static com.netflix.appinfo.PropertyBasedInstanceConfigConstants.*;
 
@@ -70,6 +70,7 @@ public abstract class PropertiesInstanceConfig extends AbstractInstanceConfig im
     public PropertiesInstanceConfig(String namespace, DataCenterInfo info) {
         super(info);
 
+        // "eureka."
         this.namespace = namespace.endsWith(".")
                 ? namespace
                 : namespace + ".";
@@ -77,6 +78,8 @@ public abstract class PropertiesInstanceConfig extends AbstractInstanceConfig im
         appGrpNameFromEnv = ConfigurationManager.getConfigInstance()
                 .getString(FALLBACK_APP_GROUP_KEY, Values.UNKNOWN_APPLICATION);
 
+        // 拿到DynamicPropertyFactory.getInstance(), 加载eureka-client.properties文件
+        // 又通过ConfigurationManager+DynamicProperties取值.
         this.configInstance = Archaius1Utils.initConfig(CommonConstants.CONFIG_FILE_NAME);
     }
 

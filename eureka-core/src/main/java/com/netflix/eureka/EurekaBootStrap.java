@@ -16,17 +16,7 @@
 
 package com.netflix.eureka;
 
-import javax.servlet.ServletContext;
-import javax.servlet.ServletContextEvent;
-import javax.servlet.ServletContextListener;
-import java.util.Date;
-
-import com.netflix.appinfo.ApplicationInfoManager;
-import com.netflix.appinfo.CloudInstanceConfig;
-import com.netflix.appinfo.DataCenterInfo;
-import com.netflix.appinfo.EurekaInstanceConfig;
-import com.netflix.appinfo.InstanceInfo;
-import com.netflix.appinfo.MyDataCenterInstanceConfig;
+import com.netflix.appinfo.*;
 import com.netflix.appinfo.providers.EurekaConfigBasedInstanceInfoProvider;
 import com.netflix.config.ConfigurationManager;
 import com.netflix.config.DeploymentContext;
@@ -49,6 +39,11 @@ import com.thoughtworks.xstream.XStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.servlet.ServletContext;
+import javax.servlet.ServletContextEvent;
+import javax.servlet.ServletContextListener;
+import java.util.Date;
+
 /**
  * The class that kick starts the eureka server.
  *
@@ -62,6 +57,9 @@ import org.slf4j.LoggerFactory;
  * </p>
  *
  * @author Karthik Ranganathan, Greg Kim, David Liu
+ *
+ *  根据web中的listener第一个追到这里.
+ *  看下面contextListener的contextInitialized
  *
  */
 public class EurekaBootStrap implements ServletContextListener {
@@ -110,7 +108,9 @@ public class EurekaBootStrap implements ServletContextListener {
     @Override
     public void contextInitialized(ServletContextEvent event) {
         try {
+            // 1. 初始化dataCenter和环境参数, 用户定义了就override
             initEurekaEnvironment();
+            // 2. 初始化上下文: 加载配置.
             initEurekaServerContext();
 
             ServletContext sc = event.getServletContext();
@@ -127,7 +127,10 @@ public class EurekaBootStrap implements ServletContextListener {
     protected void initEurekaEnvironment() throws Exception {
         logger.info("Setting the eureka configuration..");
 
+        // 经典的双重校验单例实现. volatile: 保证线程之间的可见性
+        // 会创建一个config ConcurrentCompositeConfiguration, 里面装着所有的默认config
         String dataCenter = ConfigurationManager.getConfigInstance().getString(EUREKA_DATACENTER);
+
         if (dataCenter == null) {
             logger.info("Eureka data center value eureka.datacenter is not set, defaulting to default");
             ConfigurationManager.getConfigInstance().setProperty(ARCHAIUS_DEPLOYMENT_DATACENTER, DEFAULT);
@@ -145,6 +148,10 @@ public class EurekaBootStrap implements ServletContextListener {
      * init hook for server context. Override for custom logic.
      */
     protected void initEurekaServerContext() throws Exception {
+        // 1. 加载配置文件: application.properties和application-env.propreties
+        //      eurekaServerConfig里面通过DynamicPropertyFactory拿到ConfigurationManager的instance.
+        //      eurekaServerConfig加载两个文件内容到ConfigurationManager的instance里面.
+        //      eurekaServerConfig暴露很多get方法, 拼接 "eureka(namespace).+key"去configInstance里面取值, 取不到用默认值
         EurekaServerConfig eurekaServerConfig = new DefaultEurekaServerConfig();
 
         // For backward compatibility
@@ -155,17 +162,21 @@ public class EurekaBootStrap implements ServletContextListener {
         logger.info(eurekaServerConfig.getJsonCodecName());
         ServerCodecs serverCodecs = new DefaultServerCodecs(eurekaServerConfig);
 
+        // 2. 创建一个ApplicationInfoManager 管理....
         ApplicationInfoManager applicationInfoManager = null;
 
         if (eurekaClient == null) {
+            // 2.1 和EurekaServerConfig类似, 又通过ConfigurationManager加载eureka-client.properties文件, 然后通过DynamicPropertyFactory管理properties.
             EurekaInstanceConfig instanceConfig = isCloud(ConfigurationManager.getDeploymentContext())
                     ? new CloudInstanceConfig()
                     : new MyDataCenterInstanceConfig();
-            
+            // 2.2 解析出来InstanceInfo, 使用ApplicationInfoManager包装一下.
             applicationInfoManager = new ApplicationInfoManager(
+                    // 从EurekaInstanceConfig中拿到InstanceInfo, 用的是构建者模式
                     instanceConfig, new EurekaConfigBasedInstanceInfoProvider(instanceConfig).get());
-            
+            // 2.3. 解析eureka-client.properties文件, 创建config.
             EurekaClientConfig eurekaClientConfig = new DefaultEurekaClientConfig();
+            // 2.4. 创建client, 注册, 监听什么的搞一套
             eurekaClient = new DiscoveryClient(applicationInfoManager, eurekaClientConfig);
         } else {
             applicationInfoManager = eurekaClient.getApplicationInfoManager();
