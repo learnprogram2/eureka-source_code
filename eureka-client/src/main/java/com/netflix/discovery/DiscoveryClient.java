@@ -64,6 +64,7 @@ import static com.netflix.discovery.EurekaClientNames.METRIC_REGISTRATION_PREFIX
 import static com.netflix.discovery.EurekaClientNames.METRIC_REGISTRY_PREFIX;
 
 /**
+ * 和eureka-server交互的一个client.
  * The class that is instrumental for interactions with <tt>Eureka Server</tt>.
  *
  * <p>
@@ -295,7 +296,7 @@ public class DiscoveryClient implements EurekaClient {
         this(applicationInfoManager, config, args, backupRegistryProvider, ResolverUtils::randomize);
     }
 
-    // 创建EurekaClient
+    // TODO: 创建EurekaClient, 要创建各种monitor, 线程池, 维护心跳...
     @Inject
     DiscoveryClient(ApplicationInfoManager applicationInfoManager, EurekaClientConfig config, AbstractDiscoveryClientOptionalArgs args,
                     Provider<BackupRegistry> backupRegistryProvider, EndpointRandomizer endpointRandomizer) {

@@ -17,7 +17,6 @@
 package com.netflix.eureka;
 
 import com.netflix.appinfo.ApplicationInfoManager;
-import com.netflix.discovery.DiscoveryManager;
 import com.netflix.eureka.cluster.PeerEurekaNodes;
 import com.netflix.eureka.registry.PeerAwareInstanceRegistry;
 import com.netflix.eureka.resources.ServerCodecs;
@@ -60,6 +59,7 @@ public class DefaultEurekaServerContext implements EurekaServerContext {
         this.applicationInfoManager = applicationInfoManager;
     }
 
+    // 把所有peer都启动, 然后把他们互相同步起来(通过PeerAwareInstanceRegistryImpl)
     @PostConstruct
     @Override
     public void initialize() {

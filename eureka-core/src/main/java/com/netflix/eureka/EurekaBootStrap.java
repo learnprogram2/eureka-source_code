@@ -176,12 +176,13 @@ public class EurekaBootStrap implements ServletContextListener {
                     instanceConfig, new EurekaConfigBasedInstanceInfoProvider(instanceConfig).get());
             // 2.3. 解析eureka-client.properties文件, 创建config.
             EurekaClientConfig eurekaClientConfig = new DefaultEurekaClientConfig();
-            // 2.4. 创建client, 注册, 监听什么的搞一套
+            // 2.4. 创建和eureka-server交互的一个client, 注册监听,搞一套, 创建各种monitor, 线程池, 维护心跳
             eurekaClient = new DiscoveryClient(applicationInfoManager, eurekaClientConfig);
         } else {
             applicationInfoManager = eurekaClient.getApplicationInfoManager();
         }
 
+        // 3. 用于eureka-server之间同步注册信息的 PeerAwareInstanceRegistry: 根据环境(我们是defaul的环境)創建
         PeerAwareInstanceRegistry registry;
         if (isAws(applicationInfoManager.getInfo())) {
             registry = new AwsInstanceRegistry(
@@ -201,6 +202,7 @@ public class EurekaBootStrap implements ServletContextListener {
             );
         }
 
+        // 5. 创建PeerEurekaNodes: 把所有eureka-server的生命周期管理起来.
         PeerEurekaNodes peerEurekaNodes = getPeerEurekaNodes(
                 registry,
                 eurekaServerConfig,
@@ -209,6 +211,7 @@ public class EurekaBootStrap implements ServletContextListener {
                 applicationInfoManager
         );
 
+        // 6. 创建local的一个context, 拿着所有的配置, 注册中心, peer节点. 然后把context放在holder里
         serverContext = new DefaultEurekaServerContext(
                 eurekaServerConfig,
                 serverCodecs,
@@ -216,16 +219,18 @@ public class EurekaBootStrap implements ServletContextListener {
                 peerEurekaNodes,
                 applicationInfoManager
         );
-
         EurekaServerContextHolder.initialize(serverContext);
 
+        // 7. 启动context: 把所有peer都启动, 然后把他们互相同步起来(通过PeerAwareInstanceRegistryImpl)
         serverContext.initialize();
         logger.info("Initialized server context");
 
+        // 8. 善后工作, 从邻近的eureka拷贝注册表信息.
         // Copy registry from neighboring eureka node
         int registryCount = registry.syncUp();
         registry.openForTraffic(applicationInfoManager, registryCount);
 
+        // 7. 监控.
         // Register all monitoring statistics.
         EurekaMonitors.registerAllStats();
     }
