@@ -10,6 +10,8 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  * An alternative to {@link String#intern()} with no capacity constraints.
  *
  * @author Tomasz Bak
+ *
+ * 内存的map做cache.
  */
 public class StringCache {
 

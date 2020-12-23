@@ -15,15 +15,14 @@
  */
 package com.netflix.appinfo;
 
+import com.netflix.discovery.CommonConstants;
+import com.netflix.discovery.shared.Pair;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.Map;
-
-import com.netflix.discovery.CommonConstants;
-import com.netflix.discovery.shared.Pair;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * An abstract instance info configuration with some defaults to get the users
@@ -31,7 +30,8 @@ import org.slf4j.LoggerFactory;
  * their instance with eureka server.
  *
  * @author Karthik Ranganathan
- *
+ * <p>
+ * 通用的instanceInfo配置
  */
 public abstract class AbstractInstanceConfig implements EurekaInstanceConfig {
     private static final Logger logger = LoggerFactory.getLogger(AbstractInstanceConfig.class);

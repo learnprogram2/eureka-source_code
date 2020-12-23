@@ -26,11 +26,12 @@ import com.netflix.discovery.shared.Applications;
  *
  * <p>
  * This is normally not required, but for applications that cannot exist without
- * the registry information it can provide some additional reslience.
+ * the registry information it can provide some additional reslience(恢复力).
  * </p>
  *
  * @author Karthik Ranganathan
- *
+ * <p>
+ * 主要负责在eureka-client联系不到其它eureka-server的时候, 提供一个fallback的registry.
  */
 @ImplementedBy(NotImplementedRegistryImpl.class)
 public interface BackupRegistry {

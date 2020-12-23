@@ -15,9 +15,9 @@
  */
 package com.netflix.appinfo;
 
-import java.util.Map;
-
 import com.google.inject.ImplementedBy;
+
+import java.util.Map;
 
 /**
  * Configuration information required by the instance to register with Eureka
@@ -38,6 +38,7 @@ import com.google.inject.ImplementedBy;
  *
  * @author Karthik Ranganathan
  *
+ * 这就是instanceInfo的配置
  */
 @ImplementedBy(CloudInstanceConfig.class)
 public interface EurekaInstanceConfig {
@@ -67,8 +68,9 @@ public interface EurekaInstanceConfig {
      * Indicates whether the instance should be enabled for taking traffic as
      * soon as it is registered with eureka. Sometimes the application might
      * need to do some pre-processing before it is ready to take traffic.
-     *
+     * <p>
      * :( public API typos are the worst. I think this was meant to be "OnInit".
+     * Liu, 你别的地方不写注释还有理了?
      *
      * @return true to immediately start taking traffic, false otherwise.
      */

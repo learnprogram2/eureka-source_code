@@ -15,9 +15,9 @@
  */
 package com.netflix.discovery.shared;
 
-import java.util.List;
-
 import com.netflix.appinfo.InstanceInfo;
+
+import java.util.List;
 
 /**
  * Lookup service for finding active instances.
@@ -67,6 +67,8 @@ public interface LookupService<T> {
      * {@link com.netflix.appinfo.InstanceInfo.InstanceStatus#UP} status.
      * This configuration can be controlled by overriding the
      * {@link com.netflix.discovery.EurekaClientConfig#shouldFilterOnlyUpInstances()}.
+     *
+     * 取next的方法要轮询, 只返回UP状态的server(可配置).
      *
      * Note that in some cases (Eureka emergency mode situation), the instances
      * that are returned may not be unreachable, it is solely up to the client

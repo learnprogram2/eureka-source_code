@@ -14,12 +14,14 @@ import java.util.Map;
 /**
  * InstanceInfo provider that constructs the InstanceInfo this this instance using
  * EurekaInstanceConfig.
- *
+ * <p>
  * This provider is @Singleton scope as it provides the InstanceInfo for both DiscoveryClient
  * and ApplicationInfoManager, and need to provide the same InstanceInfo to both.
  *
  * @author elandau
- *
+ * <p>
+ * 1. 根据EurekaInstanceConfig拿到InstanceInfo.
+ * 2. 拿着instanceInfo
  */
 @Singleton
 public class EurekaConfigBasedInstanceInfoProvider implements Provider<InstanceInfo> {
@@ -37,24 +39,27 @@ public class EurekaConfigBasedInstanceInfoProvider implements Provider<InstanceI
         this.config = config;
     }
 
-    //
+    // 从 EurekaInstanceConfig 里面拿到 instanceInfo
     @Override
     public synchronized InstanceInfo get() {
         if (instanceInfo == null) {
+            // ============= 从config中配置
+            // 1. 配置续约的间隔和有效期
             // Build the lease information to be passed to the server based on config
             LeaseInfo.Builder leaseInfoBuilder = LeaseInfo.Builder.newBuilder()
                     .setRenewalIntervalInSecs(config.getLeaseRenewalIntervalInSeconds())
                     .setDurationInSecs(config.getLeaseExpirationDurationInSeconds());
 
+            // TODO: VIP, 高阶了, 以后再看.
             if (vipAddressResolver == null) {
                 vipAddressResolver = new Archaius1VipAddressResolver();
             }
 
             // Builder the instance information to be registered with eureka server
-            // 使用构造器创建 instanceInfo
+            // 3. 创建 instanceInfo 构造器
             InstanceInfo.Builder builder = InstanceInfo.Builder.newBuilder(vipAddressResolver);
 
-            // 下面就是从config中取值, 然后build InstanInfo了.
+            // 4. 下面就是从config中取值, 然后build InstanInfo了.
             // set the appropriate id for the InstanceInfo, falling back to datacenter Id if applicable, else hostname
             String instanceId = config.getInstanceId();
             if (instanceId == null || instanceId.isEmpty()) {
@@ -98,7 +103,7 @@ public class EurekaConfigBasedInstanceInfoProvider implements Provider<InstanceI
                     .setHealthCheckUrls(config.getHealthCheckUrlPath(),
                             config.getHealthCheckUrl(), config.getSecureHealthCheckUrl());
 
-
+            // 是否一注册好就接受请求
             // Start off with the STARTING state to avoid traffic
             if (!config.isInstanceEnabledOnit()) {
                 InstanceStatus initialStatus = InstanceStatus.STARTING;
@@ -110,6 +115,7 @@ public class EurekaConfigBasedInstanceInfoProvider implements Provider<InstanceI
                         InstanceStatus.UP);
             }
 
+            // 用一个metadata的map盛着用户自己的参数.
             // Add any user-specific metadata information
             for (Map.Entry<String, String> mapEntry : config.getMetadataMap().entrySet()) {
                 String key = mapEntry.getKey();
@@ -120,6 +126,7 @@ public class EurekaConfigBasedInstanceInfoProvider implements Provider<InstanceI
                 }
             }
 
+            // 5. 设置好参数, 创建instanceInfo, 加上续约内容.
             instanceInfo = builder.build();
             instanceInfo.setLeaseInfo(leaseInfoBuilder.build());
         }

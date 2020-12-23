@@ -14,11 +14,13 @@ public class DefaultEurekaTransportConfig implements EurekaTransportConfig {
     private final DynamicPropertyFactory configInstance;
 
     public DefaultEurekaTransportConfig(String parentNamespace, DynamicPropertyFactory configInstance) {
+        // 命名空间是: "eureka.transport."
         this.namespace = parentNamespace == null
                 ? SUB_NAMESPACE
                 : (parentNamespace.endsWith(".")
                     ? parentNamespace + SUB_NAMESPACE
                     : parentNamespace + "." + SUB_NAMESPACE);
+        // 保存起来eureka-client文件的配置.
         this.configInstance = configInstance;
     }
 

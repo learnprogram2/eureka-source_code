@@ -47,6 +47,8 @@ import static com.netflix.appinfo.PropertyBasedInstanceConfigConstants.*;
  *
  * @author Karthik Ranganathan
  *
+ * 可以用配置文件生成instanceInfo的配置了, 先加载eureka-client.properties文件内容.
+ *
  */
 public abstract class PropertiesInstanceConfig extends AbstractInstanceConfig implements EurekaInstanceConfig {
 

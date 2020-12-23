@@ -1,10 +1,5 @@
 package com.netflix.discovery;
 
-import java.util.List;
-import java.util.Set;
-
-import javax.annotation.Nullable;
-
 import com.google.inject.ImplementedBy;
 import com.netflix.appinfo.ApplicationInfoManager;
 import com.netflix.appinfo.HealthCheckCallback;
@@ -12,6 +7,10 @@ import com.netflix.appinfo.HealthCheckHandler;
 import com.netflix.appinfo.InstanceInfo;
 import com.netflix.discovery.shared.Applications;
 import com.netflix.discovery.shared.LookupService;
+
+import javax.annotation.Nullable;
+import java.util.List;
+import java.util.Set;
 
 /**
  * Define a simple interface over the current DiscoveryClient implementation.
@@ -25,6 +24,11 @@ import com.netflix.discovery.shared.LookupService;
  *  - provide the ability to register and access the healthcheck handler for the client
  *
  * @author David Liu
+ *
+ * 现有的DiscoveryClient, 才有的这个抽象接口:
+ * 1. 拿到instanceInfo(实例信息)
+ * 2. 注册, 心跳处理.
+ * 3. 没看懂: 拿到localClient的数据???
  */
 @ImplementedBy(DiscoveryClient.class)
 public interface EurekaClient extends LookupService {
