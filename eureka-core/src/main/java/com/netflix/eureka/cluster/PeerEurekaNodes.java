@@ -1,19 +1,5 @@
 package com.netflix.eureka.cluster;
 
-import javax.inject.Inject;
-import javax.inject.Singleton;
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.TimeUnit;
-
 import com.netflix.appinfo.ApplicationInfoManager;
 import com.netflix.appinfo.InstanceInfo;
 import com.netflix.discovery.EurekaClientConfig;
@@ -24,6 +10,16 @@ import com.netflix.eureka.resources.ServerCodecs;
 import com.netflix.eureka.transport.JerseyReplicationClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import javax.inject.Inject;
+import javax.inject.Singleton;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.*;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Helper class to manage lifecycle of a collection of {@link PeerEurekaNode}s.
@@ -73,6 +69,7 @@ public class PeerEurekaNodes {
     }
 
     public void start() {
+        // 1. 创建一个线程池
         taskExecutor = Executors.newSingleThreadScheduledExecutor(
                 new ThreadFactory() {
                     @Override
@@ -84,6 +81,7 @@ public class PeerEurekaNodes {
                 }
         );
         try {
+            // 2. 解析node, 从配置文件里拿URL, 创建新的, 删掉旧的.
             updatePeerEurekaNodes(resolvePeerUrls());
             Runnable peersUpdateTask = new Runnable() {
                 @Override
@@ -194,6 +192,7 @@ public class PeerEurekaNodes {
         this.peerEurekaNodeUrls = new HashSet<>(newPeerUrls);
     }
 
+    // 创建node, 为node分配一个HttpReplicationClient.
     protected PeerEurekaNode createPeerEurekaNode(String peerEurekaNodeUrl) {
         HttpReplicationClient replicationClient = JerseyReplicationClient.createReplicationClient(serverConfig, serverCodecs, peerEurekaNodeUrl);
         String targetHost = hostFromUrl(peerEurekaNodeUrl);

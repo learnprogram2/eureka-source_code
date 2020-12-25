@@ -35,6 +35,8 @@ import javax.inject.Singleton;
  * local server such as the registry.
  *
  * @author David Liu
+ *
+ * 代表server本身, 暴露出去所有的信息
  */
 @Singleton
 public class DefaultEurekaServerContext implements EurekaServerContext {

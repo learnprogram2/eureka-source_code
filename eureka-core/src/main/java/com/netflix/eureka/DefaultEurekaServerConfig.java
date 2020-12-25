@@ -104,7 +104,7 @@ public class DefaultEurekaServerConfig implements EurekaServerConfig {
         ConfigurationManager.getConfigInstance().setProperty(
                 ARCHAIUS_DEPLOYMENT_ENVIRONMENT, env);
 
-        // 2. 拿到properties文件 参数.
+        // 2. 拿到properties文件(eureka-server) 参数.
         //     // 配置文件名字: 从DynamicPropertiesFactory里面拿到properties(默认就是ConfigurationManager), 然后拿到配置项
         //          默认的就是eureka-server.properties.
         String eurekaPropsFile = EUREKA_PROPS_FILE.get();

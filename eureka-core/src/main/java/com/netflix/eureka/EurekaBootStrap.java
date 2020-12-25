@@ -152,6 +152,7 @@ public class EurekaBootStrap implements ServletContextListener {
         //      eurekaServerConfig里面通过DynamicPropertyFactory拿到ConfigurationManager的instance.
         //      eurekaServerConfig加载两个文件内容到ConfigurationManager的instance里面.
         //      eurekaServerConfig暴露很多get方法, 拼接 "eureka(namespace).+key"去configInstance里面取值, 取不到用默认值
+        // eureka-server
         EurekaServerConfig eurekaServerConfig = new DefaultEurekaServerConfig();
 
         // For backward compatibility
