@@ -694,6 +694,8 @@ public class DiscoveryClient implements EurekaClient {
                         eurekaTransport.transportClientFactory,
                         transportConfig
                 );
+                // 在这里创建一个sessionClient
+                // com.netflix.discovery.shared.transport.EurekaHttpClients.canonicalClientFactory
                 newRegistrationClient = newRegistrationClientFactory.newClient();
             } catch (Exception e) {
                 logger.warn("Transport initialization failure", e);
@@ -1161,8 +1163,12 @@ public class DiscoveryClient implements EurekaClient {
 
     /**
      * Initializes all scheduled tasks.
+     * <p>
+     * 1. 初始化所有的定时任务
+     * 2. 首次注册
      */
     private void initScheduledTasks() {
+        // 1. 拉取注册信息: 创建schedule任务, 定时调用CacheRefreshThread的刷新registry方法.
         if (clientConfig.shouldFetchRegistry()) {
             // registry cache refresh timer
             int registryFetchIntervalSeconds = clientConfig.getRegistryFetchIntervalSeconds();
@@ -1181,11 +1187,14 @@ public class DiscoveryClient implements EurekaClient {
                     registryFetchIntervalSeconds, TimeUnit.SECONDS);
         }
 
+        // 2. 需要注册eureka.
         if (clientConfig.shouldRegisterWithEureka()) {
+            // 续租间隔,
             int renewalIntervalInSecs = instanceInfo.getLeaseInfo().getRenewalIntervalInSecs();
             int expBackOffBound = clientConfig.getHeartbeatExecutorExponentialBackOffBound();
             logger.info("Starting heartbeat executor: " + "renew interval is: {}", renewalIntervalInSecs);
 
+            // 2.1 创建一个schedule任务, 定时心跳: HeartbeatThread(调用renewal()) 续约.
             // Heartbeat timer
             heartbeatTask = new TimedSupervisorTask(
                     "heartbeat",
@@ -1200,6 +1209,7 @@ public class DiscoveryClient implements EurekaClient {
                     heartbeatTask,
                     renewalIntervalInSecs, TimeUnit.SECONDS);
 
+            // 2.2. 创建 instanceInfo replicator 这个是注册的. ???
             // InstanceInfo replicator
             instanceInfoReplicator = new InstanceInfoReplicator(
                     this,
@@ -1207,6 +1217,7 @@ public class DiscoveryClient implements EurekaClient {
                     clientConfig.getInstanceInfoReplicationIntervalSeconds(),
                     2); // burstSize
 
+            // 2.3. 监听instanceInfo的状态变化. 一变化就用instanceInfoReplicator更新到eureka-server上面去.
             statusChangeListener = new ApplicationInfoManager.StatusChangeListener() {
                 @Override
                 public String getId() {
@@ -1216,6 +1227,7 @@ public class DiscoveryClient implements EurekaClient {
                 @Override
                 public void notify(StatusChangeEvent statusChangeEvent) {
                     logger.info("Saw local status change event {}", statusChangeEvent);
+                    // instanceInfo的状态一变化就用instanceInfoReplicator更新到eureka-server上面去
                     instanceInfoReplicator.onDemandUpdate();
                 }
             };
@@ -1224,6 +1236,7 @@ public class DiscoveryClient implements EurekaClient {
                 applicationInfoManager.registerStatusChangeListener(statusChangeListener);
             }
 
+            // 2.4. 启动 instanceInfoReplicator: 开始定时发送instanceInfo了
             instanceInfoReplicator.start(clientConfig.getInitialInstanceInfoReplicationIntervalSeconds());
         } else {
             logger.info("Not registering with Eureka server per configuration");
@@ -1358,6 +1371,8 @@ public class DiscoveryClient implements EurekaClient {
     /**
      * Refresh the current local instanceInfo. Note that after a valid refresh where changes are observed, the
      * isDirty flag on the instanceInfo is set to true
+     *
+     * 更新一下自己的instanInfo状态: 先检查, 然后重新设置给instanceInfo
      */
     void refreshInstanceInfo() {
         applicationInfoManager.refreshDataCenterInfoIfRequired();
@@ -1372,6 +1387,7 @@ public class DiscoveryClient implements EurekaClient {
         }
 
         if (null != status) {
+            // 设置instanceInfo的状态为status
             applicationInfoManager.setInstanceStatus(status);
         }
     }

@@ -16,9 +16,6 @@
 
 package com.netflix.discovery.shared.transport.decorator;
 
-import java.util.Random;
-import java.util.concurrent.atomic.AtomicReference;
-
 import com.netflix.discovery.shared.transport.EurekaHttpClient;
 import com.netflix.discovery.shared.transport.EurekaHttpClientFactory;
 import com.netflix.discovery.shared.transport.EurekaHttpResponse;
@@ -29,6 +26,9 @@ import com.netflix.servo.monitor.Monitors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Random;
+import java.util.concurrent.atomic.AtomicReference;
+
 import static com.netflix.discovery.EurekaClientNames.METRIC_TRANSPORT_PREFIX;
 
 /**
@@ -37,6 +37,8 @@ import static com.netflix.discovery.EurekaClientNames.METRIC_TRANSPORT_PREFIX;
  * load distribution in case of cluster topology change.
  *
  * @author Tomasz Bak
+ *
+ * 强制规定时间的全部重连, 防止client只连接一个Eureka-Server. 保证了分发.
  */
 public class SessionedEurekaHttpClient extends EurekaHttpClientDecorator {
     private static final Logger logger = LoggerFactory.getLogger(SessionedEurekaHttpClient.class);

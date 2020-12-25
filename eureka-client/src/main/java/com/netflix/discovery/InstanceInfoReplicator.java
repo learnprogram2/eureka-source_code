@@ -6,11 +6,7 @@ import com.netflix.discovery.util.RateLimiter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -20,10 +16,16 @@ import java.util.concurrent.atomic.AtomicReference;
  * - update tasks can be scheduled on-demand via onDemandUpdate()
  * - task processing is rate limited by burstSize
  * - a new update task is always scheduled automatically after an earlier update task. However if an on-demand task
- *   is started, the scheduled automatic update task is discarded (and a new one will be scheduled after the new
- *   on-demand update).
+ * is started, the scheduled automatic update task is discarded (and a new one will be scheduled after the new
+ * on-demand update).
  *
- *   @author dliu
+ * @author dliu
+ * <p>
+ * 这个replicator很重要.
+ * 负责把本地的instanceInfo同步到eureka-server上去.:
+ * 1. 使用一个线程可以保证更新的顺序
+ * 2. 更新的任务可以通过onDemandUpdate()方法定时放到下一次
+ * 3.
  */
 class InstanceInfoReplicator implements Runnable {
     private static final Logger logger = LoggerFactory.getLogger(InstanceInfoReplicator.class);
@@ -62,6 +64,7 @@ class InstanceInfoReplicator implements Runnable {
 
     public void start(int initialDelayMs) {
         if (started.compareAndSet(false, true)) {
+            // 刚开始启动, 现在就脏了! 快把instanceInfo更新上去.
             instanceInfo.setIsDirty();  // for initial register
             Future next = scheduler.schedule(this, initialDelayMs, TimeUnit.SECONDS);
             scheduledPeriodicRef.set(next);
@@ -114,8 +117,10 @@ class InstanceInfoReplicator implements Runnable {
 
     public void run() {
         try {
+            // 1. 刷新一下本地的instanceInfo状态
             discoveryClient.refreshInstanceInfo();
 
+            // 2. 如果脏了, 就调用client.registry()注册到server
             Long dirtyTimestamp = instanceInfo.isDirtyWithTime();
             if (dirtyTimestamp != null) {
                 discoveryClient.register();
