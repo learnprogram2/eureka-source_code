@@ -16,23 +16,20 @@
 
 package com.netflix.eureka;
 
-import javax.inject.Singleton;
-import javax.servlet.Filter;
-import javax.servlet.FilterChain;
-import javax.servlet.FilterConfig;
-import javax.servlet.ServletException;
-import javax.servlet.ServletRequest;
-import javax.servlet.ServletResponse;
-import javax.servlet.http.HttpServletResponse;
-import java.io.IOException;
-
 import com.netflix.appinfo.ApplicationInfoManager;
 import com.netflix.appinfo.InstanceInfo;
 import com.netflix.appinfo.InstanceInfo.InstanceStatus;
 
+import javax.inject.Singleton;
+import javax.servlet.*;
+import javax.servlet.http.HttpServletResponse;
+import java.io.IOException;
+
 /**
  * Filter to check whether the eureka server is ready to take requests based on
  * its {@link InstanceStatus}.
+ * <p>
+ * 在服务器不up的时候 过滤掉请求
  */
 @Singleton
 public class StatusFilter implements Filter {
@@ -57,14 +54,17 @@ public class StatusFilter implements Filter {
      */
     public void doFilter(ServletRequest request, ServletResponse response,
                          FilterChain chain) throws IOException, ServletException {
+        // 拿到instanceInfo, 这个instanceInfo代表的是Eureka-Server.
         InstanceInfo myInfo = ApplicationInfoManager.getInstance().getInfo();
         InstanceStatus status = myInfo.getStatus();
+        // 如果现在不up了, 就设置给http响应307
         if (status != InstanceStatus.UP && response instanceof HttpServletResponse) {
             HttpServletResponse httpResponse = (HttpServletResponse) response;
             httpResponse.sendError(SC_TEMPORARY_REDIRECT,
                     "Current node is currently not ready to serve requests -- current status: "
                             + status + " - try another DS node: ");
         }
+        // 如果up状态就过滤下一层.
         chain.doFilter(request, response);
     }
 

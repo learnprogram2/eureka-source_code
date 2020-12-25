@@ -393,6 +393,10 @@ public class PeerAwareInstanceRegistryImpl extends AbstractInstanceRegistry impl
      * @param isReplication
      *            true if this is a replication event from other replica nodes,
      *            false otherwise.
+     *
+     * 接收client的instanceInfo注册信息是从其它peer那里拿来的InstanceInfo信息i, isReplication: 是不是从隔壁的eureka-service拿来的.
+     * 1. 注册到自己的registry表里
+     * 2. 同步到peer那里.
      */
     @Override
     public void register(final InstanceInfo info, final boolean isReplication) {
@@ -623,14 +627,18 @@ public class PeerAwareInstanceRegistryImpl extends AbstractInstanceRegistry impl
                                   InstanceStatus newStatus /* optional */, boolean isReplication) {
         Stopwatch tracer = action.getTimer().start();
         try {
+            // 计数
             if (isReplication) {
                 numberOfReplicationsLastMin.increment();
             }
+
+            // 不做再传播, 没有朋友也不传播.
             // If it is a replication already, do not replicate again as this will create a poison replication
             if (peerEurekaNodes == Collections.EMPTY_LIST || isReplication) {
                 return;
             }
 
+            // 跳过自己传给别人
             for (final PeerEurekaNode node : peerEurekaNodes.getPeerEurekaNodes()) {
                 // If the url represents this host, do not replicate to yourself.
                 if (peerEurekaNodes.isThisMyUrl(node.getServiceUrl())) {

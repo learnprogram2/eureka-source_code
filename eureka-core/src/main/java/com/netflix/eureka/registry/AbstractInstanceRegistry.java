@@ -176,6 +176,7 @@ public abstract class AbstractInstanceRegistry implements InstanceRegistry {
      * Registers a new instance with a given duration.
      *
      * @see com.netflix.eureka.lease.LeaseManager#register(java.lang.Object, int, boolean)
+     * 读写锁: 进入读锁(不能有写锁), 进入写锁(不能有写锁, 不能有读锁).
      */
     public void register(InstanceInfo registrant, int leaseDuration, boolean isReplication) {
         read.lock();
@@ -190,6 +191,7 @@ public abstract class AbstractInstanceRegistry implements InstanceRegistry {
                 }
             }
             Lease<InstanceInfo> existingLease = gMap.get(registrant.getId());
+            // 2. 如果gMap的租约存在就校验一下哪个更新, 用最新的lease
             // Retain the last dirty timestamp without overwriting it, if there is already a lease
             if (existingLease != null && (existingLease.getHolder() != null)) {
                 Long existingLastDirtyTimestamp = existingLease.getHolder().getLastDirtyTimestamp();
@@ -215,18 +217,24 @@ public abstract class AbstractInstanceRegistry implements InstanceRegistry {
                 }
                 logger.debug("No previous lease information found; it is new registration");
             }
+
+            // 3. 创建一个新lease, 存在gMap里面
             Lease<InstanceInfo> lease = new Lease<InstanceInfo>(registrant, leaseDuration);
             if (existingLease != null) {
                 lease.setServiceUpTimestamp(existingLease.getServiceUpTimestamp());
             }
             gMap.put(registrant.getId(), lease);
+
+            // 4. 把注册动作存在一个recent队列里.
             recentRegisteredQueue.add(new Pair<Long, String>(
                     System.currentTimeMillis(),
                     registrant.getAppName() + "(" + registrant.getId() + ")"));
+
+            // 5. 如果instanceInfo的OverriddenStatus改变了, ???? 这是什么
             // This is where the initial state transfer of overridden status happens
             if (!InstanceStatus.UNKNOWN.equals(registrant.getOverriddenStatus())) {
                 logger.debug("Found overridden status {} for instance {}. Checking to see if needs to be add to the "
-                                + "overrides", registrant.getOverriddenStatus(), registrant.getId());
+                        + "overrides", registrant.getOverriddenStatus(), registrant.getId());
                 if (!overriddenInstanceStatusMap.containsKey(registrant.getId())) {
                     logger.info("Not found overridden id {} and hence adding it", registrant.getId());
                     overriddenInstanceStatusMap.put(registrant.getId(), registrant.getOverriddenStatus());
@@ -242,6 +250,7 @@ public abstract class AbstractInstanceRegistry implements InstanceRegistry {
             InstanceStatus overriddenInstanceStatus = getOverriddenInstanceStatus(registrant, existingLease, isReplication);
             registrant.setStatusWithoutDirty(overriddenInstanceStatus);
 
+            // 6. 如果instanceInfo是要上线, 那么就更新租约起始时间.
             // If the lease is registered with UP status, set lease service up timestamp
             if (InstanceStatus.UP.equals(registrant.getStatus())) {
                 lease.serviceUp();
@@ -249,6 +258,8 @@ public abstract class AbstractInstanceRegistry implements InstanceRegistry {
             registrant.setActionType(ActionType.ADDED);
             recentlyChangedQueue.add(new RecentlyChangedItem(lease));
             registrant.setLastUpdatedTimestamp();
+
+            // 7. 更新cache
             invalidateCache(registrant.getAppName(), registrant.getVIPAddress(), registrant.getSecureVipAddress());
             logger.info("Registered instance {}/{} with status {} (replication={})",
                     registrant.getAppName(), registrant.getId(), registrant.getStatus(), isReplication);

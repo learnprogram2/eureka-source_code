@@ -24,14 +24,14 @@ import com.netflix.eureka.registry.AbstractInstanceRegistry;
  *
  * <p>
  * Leases determine what instances receive traffic. When there is no renewal
- * request from the client, the lease gets expired and the instances are evicted
+ * request from the client, the lease gets expired and the instances are evicted(驱逐)
  * out of {@link AbstractInstanceRegistry}. This is key to instances receiving traffic
  * or not.
  * <p>
  *
+ * @param <T> 1. 负责创建/续期指定的instance(可以理解成client代表的)
+ * 2. 租约决定一个instance能否接受请求. 过期了就被AbstractInstanceRegistry驱逐出去.
  * @author Karthik Ranganathan, Greg Kim
- *
- * @param <T>
  */
 public interface LeaseManager<T> {
 
@@ -74,6 +74,7 @@ public interface LeaseManager<T> {
 
     /**
      * Evict {@link T}s with expired {@link Lease}(s).
+     * 驱逐
      */
     void evict();
 }

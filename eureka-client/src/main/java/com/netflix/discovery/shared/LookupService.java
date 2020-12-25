@@ -24,6 +24,9 @@ import java.util.List;
  *
  * @author Karthik Ranganathan, Greg Kim.
  * @param <T> for backward compatibility
+ *
+ *
+ * 查询活着的instance
 
  */
 public interface LookupService<T> {

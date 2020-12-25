@@ -16,9 +16,6 @@
 
 package com.netflix.eureka.cluster;
 
-import java.net.MalformedURLException;
-import java.net.URL;
-
 import com.netflix.appinfo.InstanceInfo;
 import com.netflix.appinfo.InstanceInfo.InstanceStatus;
 import com.netflix.discovery.shared.transport.EurekaHttpResponse;
@@ -32,6 +29,9 @@ import com.netflix.eureka.util.batcher.TaskDispatchers;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.net.MalformedURLException;
+import java.net.URL;
+
 /**
  * The <code>PeerEurekaNode</code> represents a peer node to which information
  * should be shared from this node.
@@ -43,6 +43,8 @@ import org.slf4j.LoggerFactory;
  * <p>
  *
  * @author Karthik Ranganathan, Greg Kim
+ *
+ * node表示一个需要共享信息的peer. 本类实现了一些共享操作.
  *
  */
 public class PeerEurekaNode {
