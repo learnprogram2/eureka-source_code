@@ -120,8 +120,12 @@ public class ResponseCacheImpl implements ResponseCache {
 
         long responseCacheUpdateIntervalMs = serverConfig.getResponseCacheUpdateIntervalMs();
         this.readWriteCacheMap =
-                CacheBuilder.newBuilder().initialCapacity(serverConfig.getInitialCapacityOfResponseCache())
+                CacheBuilder.newBuilder()
+                        // cache的容量: 默认1000
+                        .initialCapacity(serverConfig.getInitialCapacityOfResponseCache())
+                        // 1. 缓存有效期: 3分钟
                         .expireAfterWrite(serverConfig.getResponseCacheAutoExpirationInSeconds(), TimeUnit.SECONDS)
+                        // 2. 缓存失效的时候就从regionSpecificKeys里面干掉他, 这个我不清楚.
                         .removalListener(new RemovalListener<Key, Value>() {
                             @Override
                             public void onRemoval(RemovalNotification<Key, Value> notification) {
@@ -133,7 +137,7 @@ public class ResponseCacheImpl implements ResponseCache {
                             }
                         })
                         // * ==========
-                        // 这里定义的是缓存中没有的情况该怎么办, load
+                        // 3. 这里定义的是缓存中没有的情况该怎么办, load
                         .build(new CacheLoader<Key, Value>() {
                             @Override
                             public Value load(Key key) throws Exception {
@@ -147,6 +151,7 @@ public class ResponseCacheImpl implements ResponseCache {
                         });
 
         if (shouldUseReadOnlyResponseCache) {
+            // 4. 定时任务 : 对readOnlyCache里面的key-value进行更新, 如果readWriteCache里面更新就拿过来: 包括删除噢
             timer.schedule(getCacheUpdateTask(),
                     new Date(((System.currentTimeMillis() / responseCacheUpdateIntervalMs) * responseCacheUpdateIntervalMs)
                             + responseCacheUpdateIntervalMs),
@@ -160,6 +165,7 @@ public class ResponseCacheImpl implements ResponseCache {
         }
     }
 
+    // 对readOnlyCache里面的key-value进行更新, 如果readWriteCache里面更新就拿过来.
     private TimerTask getCacheUpdateTask() {
         return new TimerTask() {
             @Override
