@@ -494,7 +494,7 @@ public class DiscoveryClient implements EurekaClient {
 
     /**
      * @param dnsName The dns name of the zone-specific CNAME
-     * @param type    CNAME or EIP that needs to be retrieved
+     * @param type CNAME or EIP that needs to be retrieved
      * @return The list of EC2 URLs associated with the dns name
      * @deprecated see replacement in {@link com.netflix.discovery.endpoint.EndpointUtils}
      * <p>
@@ -774,7 +774,7 @@ public class DiscoveryClient implements EurekaClient {
      * Gets the list of instances matching the given VIP Address.
      *
      * @param vipAddress - The VIP address to match the instances for.
-     * @param secure     - true if it is a secure vip address, false otherwise
+     * @param secure - true if it is a secure vip address, false otherwise
      * @return - The list of {@link InstanceInfo} objects matching the criteria
      */
     @Override
@@ -829,9 +829,9 @@ public class DiscoveryClient implements EurekaClient {
      * Gets the list of instances matching the given VIP Address in the passed region.
      *
      * @param vipAddress - The VIP address to match the instances for.
-     * @param secure     - true if it is a secure vip address, false otherwise
-     * @param region     - region from which the instances are to be fetched. If <code>null</code> then local region is
-     *                   assumed.
+     * @param secure - true if it is a secure vip address, false otherwise
+     * @param region - region from which the instances are to be fetched. If <code>null</code> then local region is
+     * assumed.
      * @return - The list of {@link InstanceInfo} objects matching the criteria, empty list if not instances found.
      */
     @Override
@@ -905,8 +905,8 @@ public class DiscoveryClient implements EurekaClient {
      * then that criterion is completely ignored for matching instances.
      *
      * @param vipAddress - The VIP address to match the instances for.
-     * @param appName    - The applicationName to match the instances for.
-     * @param secure     - true if it is a secure vip address, false otherwise.
+     * @param appName - The applicationName to match the instances for.
+     * @param secure - true if it is a secure vip address, false otherwise.
      * @return - The list of {@link InstanceInfo} objects matching the criteria.
      */
     @Override
@@ -962,20 +962,26 @@ public class DiscoveryClient implements EurekaClient {
      *
      * <p>
      * This method tries to get only deltas after the first fetch unless there
-     * is an issue in reconciling eureka server and client registry information.
+     * is an issue in reconciling(调整) eureka server and client registry information.
      * </p>
      *
      * @param forceFullRegistryFetch Forces a full registry fetch.
      * @return true if the registry was fetched
+     * <p>
+     * 拉取注册信息(其实就是[instanceInfo(Lease)]).
+     * forceFullRegistryFetch - 是否要全部拉取
      */
     private boolean fetchRegistry(boolean forceFullRegistryFetch) {
+        // 计时
         Stopwatch tracer = FETCH_REGISTRY_TIMER.start();
 
         try {
-            // If the delta is disabled or if it is the first time, get all
-            // applications
+            //
+            // If the delta is disabled or if it is the first time, get all applications
             Applications applications = getApplications();
 
+            // 1. 如果: [不允许间隔拉取] || [如果有VIP-server] || [强制全部拉取] || [当下没有applications] || [client不支持delta拉取]
+            //      就拉取全部的.
             if (clientConfig.shouldDisableDelta()
                     || (!Strings.isNullOrEmpty(clientConfig.getRegistryRefreshSingleVipAddress()))
                     || forceFullRegistryFetch
@@ -992,8 +998,10 @@ public class DiscoveryClient implements EurekaClient {
                 logger.info("Application version is -1: {}", (applications.getVersion() == -1));
                 getAndStoreFullRegistry();
             } else {
+                // 否则, 拉取delta的
                 getAndUpdateDelta(applications);
             }
+            // 2. 把拉去来的applications 存起来.
             applications.setAppsHashCode(applications.getReconcileHashCode());
             logTotalInstances();
         } catch (Throwable e) {
@@ -1006,9 +1014,11 @@ public class DiscoveryClient implements EurekaClient {
             }
         }
 
+        // 3.
         // Notify about cache refresh before updating the instance remote status
         onCacheRefreshed();
 
+        // 4.
         // Update remote status based on refreshed data held in the cache
         updateInstanceRemoteStatus();
 
@@ -1084,7 +1094,7 @@ public class DiscoveryClient implements EurekaClient {
     }
 
     /**
-     * @param instanceZone   The zone in which the client resides
+     * @param instanceZone The zone in which the client resides
      * @param preferSameZone true if we have to prefer the same zone as the client, false otherwise
      * @return The list of all eureka service urls for the eureka client to talk to
      * @deprecated see replacement in {@link com.netflix.discovery.endpoint.EndpointUtils}
@@ -1136,6 +1146,8 @@ public class DiscoveryClient implements EurekaClient {
      *
      * @return the full registry information.
      * @throws Throwable on error.
+     *
+     * 去server查到所有的registry, 然后存起来.
      */
     private void getAndStoreFullRegistry() throws Throwable {
         long currentUpdateGeneration = fetchRegistryGeneration.get();
@@ -1332,8 +1344,8 @@ public class DiscoveryClient implements EurekaClient {
      * atomically set the registry to the new registry
      * fi
      *
-     * @param delta             the last delta registry information received from the eureka
-     *                          server.
+     * @param delta the last delta registry information received from the eureka
+     * server.
      * @param reconcileHashCode the hashcode generated by the server for reconciliation.
      * @return ClientResponse the HTTP response object.
      * @throws Throwable on any error.
@@ -1371,7 +1383,7 @@ public class DiscoveryClient implements EurekaClient {
     /**
      * Refresh the current local instanceInfo. Note that after a valid refresh where changes are observed, the
      * isDirty flag on the instanceInfo is set to true
-     *
+     * <p>
      * 更新一下自己的instanInfo状态: 先检查, 然后重新设置给instanceInfo
      */
     void refreshInstanceInfo() {
@@ -1502,7 +1514,7 @@ public class DiscoveryClient implements EurekaClient {
      * local cache.
      *
      * @param delta the delta information received from eureka server in the last
-     *              poll cycle.
+     * poll cycle.
      */
     private void updateDelta(Applications delta) {
         int deltaCount = 0;
@@ -1574,7 +1586,7 @@ public class DiscoveryClient implements EurekaClient {
     }
 
     /**
-     * @param instanceZone   The zone in which the client resides.
+     * @param instanceZone The zone in which the client resides.
      * @param preferSameZone true if we have to prefer the same zone as the client, false otherwise.
      * @return The list of all eureka service urls for the eureka client to talk to.
      * @deprecated see replacement in {@link com.netflix.discovery.endpoint.EndpointUtils}
