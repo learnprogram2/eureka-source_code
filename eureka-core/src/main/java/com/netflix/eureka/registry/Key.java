@@ -6,6 +6,9 @@ import com.netflix.eureka.Version;
 import javax.annotation.Nullable;
 import java.util.Arrays;
 
+/**
+ * 一个工具类. 为了标记什么....
+ */
 public class Key {
 
     public enum KeyType {
