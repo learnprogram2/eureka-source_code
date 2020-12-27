@@ -253,6 +253,7 @@ public class Applications {
      * @param instanceCountMap
      *            the instance count map to use for generating the hash
      * @return the hash code for this instance
+     *
      */
     public static String getReconcileHashCode(Map<String, AtomicInteger> instanceCountMap) {
         StringBuilder reconcileHashCode = new StringBuilder(75);

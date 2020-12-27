@@ -186,6 +186,8 @@ public class ApplicationsResource {
      * @param uriInfo  the {@link java.net.URI} information of the request made.
      * @return response containing the delta information of the
      *         {@link AbstractInstanceRegistry}.
+     *
+     * 查询delta的更新: 在配置的delta时间内, 可能返回两次的delta都是重复的.
      */
     @Path("delta")
     @GET

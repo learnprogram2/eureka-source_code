@@ -109,9 +109,13 @@ public abstract class AbstractInstanceRegistry implements InstanceRegistry {
 
         this.renewsLastMin = new MeasuredRate(1000 * 60 * 1);
 
-        this.deltaRetentionTimer.schedule(getDeltaRetentionTask(),
-                serverConfig.getDeltaRetentionTimerIntervalInMs(),
-                serverConfig.getDeltaRetentionTimerIntervalInMs());
+        // 这是一个定时任务. Retention(保留)
+        this.deltaRetentionTimer.schedule(
+                //
+                getDeltaRetentionTask(),
+                // 30s之后, 每30s一次
+                serverConfig.getDeltaRetentionTimerIntervalInMs(), // 30s
+                serverConfig.getDeltaRetentionTimerIntervalInMs()); // 30s
     }
 
     @Override
@@ -935,6 +939,8 @@ public abstract class AbstractInstanceRegistry implements InstanceRegistry {
      * @return The delta with instances from the passed remote regions as well as local region. The instances
      * from remote regions can be further be restricted as explained above. <code>null</code> if the application does
      * not exist locally or in remote regions.
+     *
+     * region先不看. 看 : Gets the application delta
      */
     public Applications getApplicationDeltasFromMultipleRegions(String[] remoteRegions) {
         if (null == remoteRegions) {
@@ -954,6 +960,7 @@ public abstract class AbstractInstanceRegistry implements InstanceRegistry {
         Map<String, Application> applicationInstancesMap = new HashMap<String, Application>();
         write.lock();
         try {
+            // 1. 从recentlyChangedQueue里面拿出来lease和他的instance. 最终拿到application
             Iterator<RecentlyChangedItem> iter = this.recentlyChangedQueue.iterator();
             logger.debug("The number of elements in the delta queue is :{}", this.recentlyChangedQueue.size());
             while (iter.hasNext()) {
@@ -1335,6 +1342,7 @@ public abstract class AbstractInstanceRegistry implements InstanceRegistry {
         return rule.apply(r, existingLease, isReplication).status();
     }
 
+    // 删除recentlyChangedQueue里超过3分钟的
     private TimerTask getDeltaRetentionTask() {
         return new TimerTask() {
 
@@ -1342,7 +1350,9 @@ public abstract class AbstractInstanceRegistry implements InstanceRegistry {
             public void run() {
                 Iterator<RecentlyChangedItem> it = recentlyChangedQueue.iterator();
                 while (it.hasNext()) {
+                    // 如果 recentlyChangedQueue更新时间超过了3分钟, 就干掉了.
                     if (it.next().getLastUpdateTime() <
+                            // 当前时间-3分钟
                             System.currentTimeMillis() - serverConfig.getRetentionTimeInMSInDeltaQueue()) {
                         it.remove();
                     } else {
