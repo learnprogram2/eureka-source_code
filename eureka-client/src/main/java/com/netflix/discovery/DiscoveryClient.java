@@ -116,6 +116,10 @@ public class DiscoveryClient implements EurekaClient {
      * A scheduler to be used for the following 3 tasks:
      * - updating service urls
      * - scheduling a TimedSuperVisorTask
+     * <p>
+     * schedule: 负责定时任务: 主要有: 心跳, 拉取delta的applciation修改....
+     * heartbeatExecutor: 在心跳任务的时候, 负责调用
+     * heartbeatExecutor: 在拉取的时候, 负责执行
      */
     private final ScheduledExecutorService scheduler;
     // additional executors for supervised subtasks
@@ -169,40 +173,31 @@ public class DiscoveryClient implements EurekaClient {
 
     private final Stats stats = new Stats();
 
-    private static final class EurekaTransport {
-        private ClosableResolver bootstrapResolver;
-        private TransportClientFactory transportClientFactory;
-
-        private EurekaHttpClient registrationClient;
-        private EurekaHttpClientFactory registrationClientFactory;
-
-        private EurekaHttpClient queryClient;
-        private EurekaHttpClientFactory queryClientFactory;
-
-        void shutdown() {
-            if (registrationClientFactory != null) {
-                registrationClientFactory.shutdown();
+    /**
+     * Renew with the eureka service by making the appropriate REST call
+     * 这里就是续约的具体执行逻辑.
+     */
+    boolean renew() {
+        EurekaHttpResponse<InstanceInfo> httpResponse;
+        try {
+            // 1. 通过sessionClien来发送. appName-instanceId-instanceInfo
+            httpResponse = eurekaTransport.registrationClient.sendHeartBeat(instanceInfo.getAppName(), instanceInfo.getId(), instanceInfo, null);
+            logger.debug(PREFIX + "{} - Heartbeat status: {}", appPathIdentifier, httpResponse.getStatusCode());
+            // 2. 如果没有找到. 重新注册
+            if (httpResponse.getStatusCode() == Status.NOT_FOUND.getStatusCode()) {
+                REREGISTER_COUNTER.increment();
+                logger.info(PREFIX + "{} - Re-registering apps/{}", appPathIdentifier, instanceInfo.getAppName());
+                long timestamp = instanceInfo.setIsDirtyWithTime();
+                boolean success = register();
+                if (success) {
+                    instanceInfo.unsetIsDirty(timestamp);
+                }
+                return success;
             }
-
-            if (queryClientFactory != null) {
-                queryClientFactory.shutdown();
-            }
-
-            if (registrationClient != null) {
-                registrationClient.shutdown();
-            }
-
-            if (queryClient != null) {
-                queryClient.shutdown();
-            }
-
-            if (transportClientFactory != null) {
-                transportClientFactory.shutdown();
-            }
-
-            if (bootstrapResolver != null) {
-                bootstrapResolver.shutdown();
-            }
+            return httpResponse.getStatusCode() == Status.OK.getStatusCode();
+        } catch (Throwable e) {
+            logger.error(PREFIX + "{} - was unable to send heartbeat!", appPathIdentifier, e);
+            return false;
         }
     }
 
@@ -801,27 +796,39 @@ public class DiscoveryClient implements EurekaClient {
     }
 
     /**
-     * Renew with the eureka service by making the appropriate REST call
+     * Gets the full registry information from the eureka server and stores it locally.
+     * When applying the full registry, the following flow is observed:
+     * <p>
+     * if (update generation have not advanced (due to another thread))
+     * atomically set the registry to the new registry
+     * fi
+     *
+     * @return the full registry information.
+     * @throws Throwable on error.
+     * <p>
+     * 去server查到所有的registry, 然后存起来.
      */
-    boolean renew() {
-        EurekaHttpResponse<InstanceInfo> httpResponse;
-        try {
-            httpResponse = eurekaTransport.registrationClient.sendHeartBeat(instanceInfo.getAppName(), instanceInfo.getId(), instanceInfo, null);
-            logger.debug(PREFIX + "{} - Heartbeat status: {}", appPathIdentifier, httpResponse.getStatusCode());
-            if (httpResponse.getStatusCode() == Status.NOT_FOUND.getStatusCode()) {
-                REREGISTER_COUNTER.increment();
-                logger.info(PREFIX + "{} - Re-registering apps/{}", appPathIdentifier, instanceInfo.getAppName());
-                long timestamp = instanceInfo.setIsDirtyWithTime();
-                boolean success = register();
-                if (success) {
-                    instanceInfo.unsetIsDirty(timestamp);
-                }
-                return success;
-            }
-            return httpResponse.getStatusCode() == Status.OK.getStatusCode();
-        } catch (Throwable e) {
-            logger.error(PREFIX + "{} - was unable to send heartbeat!", appPathIdentifier, e);
-            return false;
+    private void getAndStoreFullRegistry() throws Throwable {
+        long currentUpdateGeneration = fetchRegistryGeneration.get();
+
+        logger.info("Getting all instance registry info from the eureka server");
+
+        Applications apps = null;
+        EurekaHttpResponse<Applications> httpResponse = clientConfig.getRegistryRefreshSingleVipAddress() == null
+                ? eurekaTransport.queryClient.getApplications(remoteRegionsRef.get())
+                : eurekaTransport.queryClient.getVip(clientConfig.getRegistryRefreshSingleVipAddress(), remoteRegionsRef.get());
+        if (httpResponse.getStatusCode() == Status.OK.getStatusCode()) {
+            apps = httpResponse.getEntity();
+        }
+        logger.info("The response status is {}", httpResponse.getStatusCode());
+
+        if (apps == null) {
+            logger.error("The application is null for some reason. Not storing this information");
+        } else if (fetchRegistryGeneration.compareAndSet(currentUpdateGeneration, currentUpdateGeneration + 1)) {
+            localRegionApps.set(this.filterAndShuffle(apps));
+            logger.debug("Got full registry with apps hashcode {}", apps.getAppsHashCode());
+        } else {
+            logger.warn("Not updating applications as another thread is updating it already");
         }
     }
 
@@ -1137,43 +1144,6 @@ public class DiscoveryClient implements EurekaClient {
     }
 
     /**
-     * Gets the full registry information from the eureka server and stores it locally.
-     * When applying the full registry, the following flow is observed:
-     * <p>
-     * if (update generation have not advanced (due to another thread))
-     * atomically set the registry to the new registry
-     * fi
-     *
-     * @return the full registry information.
-     * @throws Throwable on error.
-     *
-     * 去server查到所有的registry, 然后存起来.
-     */
-    private void getAndStoreFullRegistry() throws Throwable {
-        long currentUpdateGeneration = fetchRegistryGeneration.get();
-
-        logger.info("Getting all instance registry info from the eureka server");
-
-        Applications apps = null;
-        EurekaHttpResponse<Applications> httpResponse = clientConfig.getRegistryRefreshSingleVipAddress() == null
-                ? eurekaTransport.queryClient.getApplications(remoteRegionsRef.get())
-                : eurekaTransport.queryClient.getVip(clientConfig.getRegistryRefreshSingleVipAddress(), remoteRegionsRef.get());
-        if (httpResponse.getStatusCode() == Status.OK.getStatusCode()) {
-            apps = httpResponse.getEntity();
-        }
-        logger.info("The response status is {}", httpResponse.getStatusCode());
-
-        if (apps == null) {
-            logger.error("The application is null for some reason. Not storing this information");
-        } else if (fetchRegistryGeneration.compareAndSet(currentUpdateGeneration, currentUpdateGeneration + 1)) {
-            localRegionApps.set(this.filterAndShuffle(apps));
-            logger.debug("Got full registry with apps hashcode {}", apps.getAppsHashCode());
-        } else {
-            logger.warn("Not updating applications as another thread is updating it already");
-        }
-    }
-
-    /**
      * Initializes all scheduled tasks.
      * <p>
      * 1. 初始化所有的定时任务
@@ -1207,6 +1177,7 @@ public class DiscoveryClient implements EurekaClient {
             logger.info("Starting heartbeat executor: " + "renew interval is: {}", renewalIntervalInSecs);
 
             // 2.1 创建一个schedule任务, 定时心跳: HeartbeatThread(调用renewal()) 续约.
+            // - schedule 负责定时执行TimedSupervisorTask的这个task, executor负责在run里执行具体的task
             // Heartbeat timer
             heartbeatTask = new TimedSupervisorTask(
                     "heartbeat",
@@ -1255,27 +1226,6 @@ public class DiscoveryClient implements EurekaClient {
         }
     }
 
-    private void cancelScheduledTasks() {
-        if (instanceInfoReplicator != null) {
-            instanceInfoReplicator.stop();
-        }
-        if (heartbeatExecutor != null) {
-            heartbeatExecutor.shutdownNow();
-        }
-        if (cacheRefreshExecutor != null) {
-            cacheRefreshExecutor.shutdownNow();
-        }
-        if (scheduler != null) {
-            scheduler.shutdownNow();
-        }
-        if (cacheRefreshTask != null) {
-            cacheRefreshTask.cancel();
-        }
-        if (heartbeatTask != null) {
-            heartbeatTask.cancel();
-        }
-    }
-
     /**
      * Get the delta registry information from the eureka server and update it locally.
      * When applying the delta, the following flow is observed:
@@ -1288,7 +1238,7 @@ public class DiscoveryClient implements EurekaClient {
      *
      * @return the client response
      * @throws Throwable on error
-     *
+     * <p>
      * 如果拉过来的delta更新, 年代比现在的还要老: update application with the delta and get reconcileHashCode
      */
     private void getAndUpdateDelta(Applications applications) throws Throwable {
@@ -1334,13 +1284,25 @@ public class DiscoveryClient implements EurekaClient {
         }
     }
 
-    /**
-     * @deprecated see replacement in {@link com.netflix.discovery.endpoint.EndpointUtils}
-     */
-    @Deprecated
-    @Override
-    public List<String> getDiscoveryServiceUrls(String zone) {
-        return EndpointUtils.getDiscoveryServiceUrls(clientConfig, zone, urlRandomizer);
+    private void cancelScheduledTasks() {
+        if (instanceInfoReplicator != null) {
+            instanceInfoReplicator.stop();
+        }
+        if (heartbeatExecutor != null) {
+            heartbeatExecutor.shutdownNow();
+        }
+        if (cacheRefreshExecutor != null) {
+            cacheRefreshExecutor.shutdownNow();
+        }
+        if (scheduler != null) {
+            scheduler.shutdownNow();
+        }
+        if (cacheRefreshTask != null) {
+            cacheRefreshTask.cancel();
+        }
+        if (heartbeatTask != null) {
+            heartbeatTask.cancel();
+        }
     }
 
     /**
@@ -1358,7 +1320,7 @@ public class DiscoveryClient implements EurekaClient {
      * @param reconcileHashCode the hashcode generated by the server for reconciliation.
      * @return ClientResponse the HTTP response object.
      * @throws Throwable on any error.
-     *
+     * <p>
      * 协调eureka-server和client的registry的不同:
      * 1. 查询fullRegistry.
      */
@@ -1393,6 +1355,84 @@ public class DiscoveryClient implements EurekaClient {
     }
 
     /**
+     * @deprecated see replacement in {@link com.netflix.discovery.endpoint.EndpointUtils}
+     */
+    @Deprecated
+    @Override
+    public List<String> getDiscoveryServiceUrls(String zone) {
+        return EndpointUtils.getDiscoveryServiceUrls(clientConfig, zone, urlRandomizer);
+    }
+
+    /**
+     * Updates the delta information fetches from the eureka server into the
+     * local cache.
+     *
+     * @param delta the delta information received from eureka server in the last
+     * poll cycle.
+     * <p>
+     * 把delta的更新merge到local cache里.
+     * - 根据更新过来的application带的instanceInfo里的actionType来对cache里的applications增改删
+     */
+    private void updateDelta(Applications delta) {
+        int deltaCount = 0;
+        for (Application app : delta.getRegisteredApplications()) {
+            for (InstanceInfo instance : app.getInstances()) {
+                Applications applications = getApplications();
+                String instanceRegion = instanceRegionChecker.getInstanceRegion(instance);
+                if (!instanceRegionChecker.isLocalRegion(instanceRegion)) {
+                    Applications remoteApps = remoteRegionVsApps.get(instanceRegion);
+                    if (null == remoteApps) {
+                        remoteApps = new Applications();
+                        remoteRegionVsApps.put(instanceRegion, remoteApps);
+                    }
+                    applications = remoteApps;
+                }
+
+                ++deltaCount;
+                if (ActionType.ADDED.equals(instance.getActionType())) {
+                    Application existingApp = applications.getRegisteredApplications(instance.getAppName());
+                    if (existingApp == null) {
+                        applications.addApplication(app);
+                    }
+                    logger.debug("Added instance {} to the existing apps in region {}", instance.getId(), instanceRegion);
+                    applications.getRegisteredApplications(instance.getAppName()).addInstance(instance);
+                } else if (ActionType.MODIFIED.equals(instance.getActionType())) {
+                    Application existingApp = applications.getRegisteredApplications(instance.getAppName());
+                    if (existingApp == null) {
+                        applications.addApplication(app);
+                    }
+                    logger.debug("Modified instance {} to the existing apps ", instance.getId());
+
+                    applications.getRegisteredApplications(instance.getAppName()).addInstance(instance);
+
+                } else if (ActionType.DELETED.equals(instance.getActionType())) {
+                    Application existingApp = applications.getRegisteredApplications(instance.getAppName());
+                    if (existingApp != null) {
+                        logger.debug("Deleted instance {} to the existing apps ", instance.getId());
+                        existingApp.removeInstance(instance);
+                        /*
+                         * We find all instance list from application(The status of instance status is not only the status is UP but also other status)
+                         * if instance list is empty, we remove the application.
+                         */
+                        if (existingApp.getInstancesAsIsFromEureka().isEmpty()) {
+                            applications.removeApplication(existingApp);
+                        }
+                    }
+                }
+            }
+        }
+        logger.debug("The total number of instances fetched by the delta processor : {}", deltaCount);
+
+        getApplications().setVersion(delta.getVersion());
+        getApplications().shuffleInstances(clientConfig.shouldFilterOnlyUpInstances());
+
+        for (Applications applications : remoteRegionVsApps.values()) {
+            applications.setVersion(delta.getVersion());
+            applications.shuffleInstances(clientConfig.shouldFilterOnlyUpInstances());
+        }
+    }
+
+    /**
      * Refresh the current local instanceInfo. Note that after a valid refresh where changes are observed, the
      * isDirty flag on the instanceInfo is set to true
      * <p>
@@ -1416,14 +1456,39 @@ public class DiscoveryClient implements EurekaClient {
         }
     }
 
-    /**
-     * The heartbeat task that renews the lease in the given intervals.
-     */
-    private class HeartbeatThread implements Runnable {
+    private static final class EurekaTransport {
+        private ClosableResolver bootstrapResolver;
+        private TransportClientFactory transportClientFactory;
 
-        public void run() {
-            if (renew()) {
-                lastSuccessfulHeartbeatTimestamp = System.currentTimeMillis();
+        private EurekaHttpClient registrationClient; // sessionClien
+        private EurekaHttpClientFactory registrationClientFactory;
+
+        private EurekaHttpClient queryClient;
+        private EurekaHttpClientFactory queryClientFactory;
+
+        void shutdown() {
+            if (registrationClientFactory != null) {
+                registrationClientFactory.shutdown();
+            }
+
+            if (queryClientFactory != null) {
+                queryClientFactory.shutdown();
+            }
+
+            if (registrationClient != null) {
+                registrationClient.shutdown();
+            }
+
+            if (queryClient != null) {
+                queryClient.shutdown();
+            }
+
+            if (transportClientFactory != null) {
+                transportClientFactory.shutdown();
+            }
+
+            if (bootstrapResolver != null) {
+                bootstrapResolver.shutdown();
             }
         }
     }
@@ -1522,71 +1587,15 @@ public class DiscoveryClient implements EurekaClient {
     }
 
     /**
-     * Updates the delta information fetches from the eureka server into the
-     * local cache.
-     *
-     * @param delta the delta information received from eureka server in the last
-     * poll cycle.
-     *
-     * 把delta的更新merge到local cache里.
-     * - 根据更新过来的application带的instanceInfo里的actionType来对cache里的applications增改删
+     * The heartbeat task that renews the lease in the given intervals.
+     * 心跳任务的具体执行线程
      */
-    private void updateDelta(Applications delta) {
-        int deltaCount = 0;
-        for (Application app : delta.getRegisteredApplications()) {
-            for (InstanceInfo instance : app.getInstances()) {
-                Applications applications = getApplications();
-                String instanceRegion = instanceRegionChecker.getInstanceRegion(instance);
-                if (!instanceRegionChecker.isLocalRegion(instanceRegion)) {
-                    Applications remoteApps = remoteRegionVsApps.get(instanceRegion);
-                    if (null == remoteApps) {
-                        remoteApps = new Applications();
-                        remoteRegionVsApps.put(instanceRegion, remoteApps);
-                    }
-                    applications = remoteApps;
-                }
+    private class HeartbeatThread implements Runnable {
 
-                ++deltaCount;
-                if (ActionType.ADDED.equals(instance.getActionType())) {
-                    Application existingApp = applications.getRegisteredApplications(instance.getAppName());
-                    if (existingApp == null) {
-                        applications.addApplication(app);
-                    }
-                    logger.debug("Added instance {} to the existing apps in region {}", instance.getId(), instanceRegion);
-                    applications.getRegisteredApplications(instance.getAppName()).addInstance(instance);
-                } else if (ActionType.MODIFIED.equals(instance.getActionType())) {
-                    Application existingApp = applications.getRegisteredApplications(instance.getAppName());
-                    if (existingApp == null) {
-                        applications.addApplication(app);
-                    }
-                    logger.debug("Modified instance {} to the existing apps ", instance.getId());
-
-                    applications.getRegisteredApplications(instance.getAppName()).addInstance(instance);
-
-                } else if (ActionType.DELETED.equals(instance.getActionType())) {
-                    Application existingApp = applications.getRegisteredApplications(instance.getAppName());
-                    if (existingApp != null) {
-                        logger.debug("Deleted instance {} to the existing apps ", instance.getId());
-                        existingApp.removeInstance(instance);
-                        /*
-                         * We find all instance list from application(The status of instance status is not only the status is UP but also other status)
-                         * if instance list is empty, we remove the application.
-                         */
-                        if (existingApp.getInstancesAsIsFromEureka().isEmpty()) {
-                            applications.removeApplication(existingApp);
-                        }
-                    }
-                }
+        public void run() {
+            if (renew()) {
+                lastSuccessfulHeartbeatTimestamp = System.currentTimeMillis();
             }
-        }
-        logger.debug("The total number of instances fetched by the delta processor : {}", deltaCount);
-
-        getApplications().setVersion(delta.getVersion());
-        getApplications().shuffleInstances(clientConfig.shouldFilterOnlyUpInstances());
-
-        for (Applications applications : remoteRegionVsApps.values()) {
-            applications.setVersion(delta.getVersion());
-            applications.shuffleInstances(clientConfig.shouldFilterOnlyUpInstances());
         }
     }
 

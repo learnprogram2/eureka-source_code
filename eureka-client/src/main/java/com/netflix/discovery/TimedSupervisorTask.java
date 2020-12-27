@@ -1,20 +1,15 @@
 package com.netflix.discovery;
 
-import java.util.TimerTask;
-import java.util.concurrent.Future;
-import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicLong;
-
 import com.netflix.servo.monitor.Counter;
 import com.netflix.servo.monitor.LongGauge;
 import com.netflix.servo.monitor.MonitorConfig;
 import com.netflix.servo.monitor.Monitors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.TimerTask;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * A supervisor task that schedules subtasks while enforce a timeout.
@@ -40,6 +35,7 @@ public class TimedSupervisorTask extends TimerTask {
     private final AtomicLong delay;
     private final long maxDelay;
 
+    // schedule 和 executor是什么意思??
     public TimedSupervisorTask(String name, ScheduledExecutorService scheduler, ThreadPoolExecutor executor,
                                int timeout, TimeUnit timeUnit, int expBackOffBound, Runnable task) {
         this.name = name;
@@ -63,6 +59,7 @@ public class TimedSupervisorTask extends TimerTask {
     public void run() {
         Future<?> future = null;
         try {
+            // executor负责执行task.
             future = executor.submit(task);
             threadPoolLevelGauge.set((long) executor.getActiveCount());
             future.get(timeoutMillis, TimeUnit.MILLISECONDS);  // block until done or timeout
@@ -98,6 +95,7 @@ public class TimedSupervisorTask extends TimerTask {
                 future.cancel(true);
             }
 
+            // schedule 负责定时执行TimedSupervisorTask的这个task, executor负责在run里执行具体的task
             if (!scheduler.isShutdown()) {
                 scheduler.schedule(this, delay.get(), TimeUnit.MILLISECONDS);
             }

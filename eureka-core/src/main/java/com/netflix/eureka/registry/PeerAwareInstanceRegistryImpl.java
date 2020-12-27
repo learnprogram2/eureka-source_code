@@ -415,7 +415,9 @@ public class PeerAwareInstanceRegistryImpl extends AbstractInstanceRegistry impl
      * java.lang.String, long, boolean)
      */
     public boolean renew(final String appName, final String id, final boolean isReplication) {
+        // 1. 续期
         if (super.renew(appName, id, isReplication)) {
+            // 2. 同步到其它的peer
             replicateToPeers(Action.Heartbeat, appName, id, null, null, isReplication);
             return true;
         }
