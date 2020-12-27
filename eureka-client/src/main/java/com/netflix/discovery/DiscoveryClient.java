@@ -872,19 +872,25 @@ public class DiscoveryClient implements EurekaClient {
     /**
      * Shuts down Eureka Client. Also sends a deregistration request to the
      * eureka server.
+     * <p>
+     * client关闭, 来看服务下线在client端是怎么做的.
      */
     @PreDestroy
     @Override
     public synchronized void shutdown() {
+        // Atomic防止多线程并发.
         if (isShutdown.compareAndSet(false, true)) {
             logger.info("Shutting down DiscoveryClient ...");
 
+            // 1. status的listener
             if (statusChangeListener != null && applicationInfoManager != null) {
                 applicationInfoManager.unregisterStatusChangeListener(statusChangeListener.getId());
             }
 
+            // 2. 定时任务线程池关闭
             cancelScheduledTasks();
 
+            // 3. 取消注册, 调用: del: apps/{appName}/{instanceId}
             // If APPINFO was registered
             if (applicationInfoManager != null
                     && clientConfig.shouldRegisterWithEureka()
@@ -893,10 +899,12 @@ public class DiscoveryClient implements EurekaClient {
                 unregister();
             }
 
+            // 4. 关闭连接
             if (eurekaTransport != null) {
                 eurekaTransport.shutdown();
             }
 
+            // 5. 关闭监控
             heartbeatStalenessMonitor.shutdown();
             registryStalenessMonitor.shutdown();
 
@@ -1129,6 +1137,7 @@ public class DiscoveryClient implements EurekaClient {
 
     /**
      * unregister w/ the eureka service.
+     * 调用: del: apps/{appName}/{instanceId}
      */
     void unregister() {
         // It can be null if shouldRegisterWithEureka == false

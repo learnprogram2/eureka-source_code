@@ -68,6 +68,8 @@ public class Lease<T> {
 
     /**
      * Cancels the lease by updating the eviction time.
+     * <p>
+     * 取消就是设置: evictionTimestamp
      */
     public void cancel() {
         if (evictionTimestamp <= 0) {

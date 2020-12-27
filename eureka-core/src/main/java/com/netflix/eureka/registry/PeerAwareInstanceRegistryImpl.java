@@ -50,11 +50,11 @@ import static com.netflix.eureka.Names.METRIC_REGISTRY_PREFIX;
 
 /**
  * 1. 对 AbstractInstanceRegistry(处理客户端所有注册请求)的全部操作复制, 让eureka-server之间同步.
- *      最要紧取复制的操作是: 注册,Renewals, cancel, 报错, 状态变更.
+ * 最要紧取复制的操作是: 注册,Renewals, cancel, 报错, 状态变更.
  * 2. eureka-server启动的时候, 就会去旁边的peer拿注册信息, 拿不到就在一个阶段里不允许客户端注册.
- *      如果renewal的时候drop了一定数量的client, 就不会drop了.
- *
- *
+ * 如果renewal的时候drop了一定数量的client, 就不会drop了.
+ * <p>
+ * <p>
  * Handles replication of all operations to {@link AbstractInstanceRegistry} to peer
  * <em>Eureka</em> nodes to keep them all in sync.
  *
@@ -80,7 +80,6 @@ import static com.netflix.eureka.Names.METRIC_REGISTRY_PREFIX;
  * </p>
  *
  * @author Karthik Ranganathan, Greg Kim
- *
  */
 @Singleton
 public class PeerAwareInstanceRegistryImpl extends AbstractInstanceRegistry implements PeerAwareInstanceRegistry {
@@ -180,7 +179,6 @@ public class PeerAwareInstanceRegistryImpl extends AbstractInstanceRegistry impl
      * The renewal threshold would be used to determine if the renewals drop
      * dramatically because of network partition and to protect expiring too
      * many instances at a time.
-     *
      */
     private void scheduleRenewalThresholdUpdateTask() {
         timer.schedule(new TimerTask() {
@@ -324,7 +322,7 @@ public class PeerAwareInstanceRegistryImpl extends AbstractInstanceRegistry impl
      * get the registry information from the peer eureka nodes at start up.
      *
      * @return false - if the instances count from a replica transfer returned
-     *         zero and if the wait time has not elapsed, otherwise returns true
+     * zero and if the wait time has not elapsed, otherwise returns true
      */
     @Override
     public boolean shouldAllowAccess(boolean remoteRegionRequired) {
@@ -354,12 +352,11 @@ public class PeerAwareInstanceRegistryImpl extends AbstractInstanceRegistry impl
 
 
     /**
+     * @return the list of replica nodes.
      * @deprecated use {@link com.netflix.eureka.cluster.PeerEurekaNodes#getPeerEurekaNodes()} directly.
-     *
+     * <p>
      * Gets the list of peer eureka nodes which is the list to replicate
      * information to.
-     *
-     * @return the list of replica nodes.
      */
     @Deprecated
     public List<PeerEurekaNode> getReplicaNodes() {
@@ -371,6 +368,10 @@ public class PeerAwareInstanceRegistryImpl extends AbstractInstanceRegistry impl
      *
      * @see com.netflix.eureka.registry.InstanceRegistry#cancel(java.lang.String,
      * java.lang.String, long, boolean)
+     *
+     * 1. 主动下线
+     * 2. 同步给peer
+     *
      */
     @Override
     public boolean cancel(final String appName, final String id,
@@ -388,12 +389,10 @@ public class PeerAwareInstanceRegistryImpl extends AbstractInstanceRegistry impl
      * this information to all peer eureka nodes. If this is replication event
      * from other replica nodes then it is not replicated.
      *
-     * @param info
-     *            the {@link InstanceInfo} to be registered and replicated.
-     * @param isReplication
-     *            true if this is a replication event from other replica nodes,
-     *            false otherwise.
-     *
+     * @param info the {@link InstanceInfo} to be registered and replicated.
+     * @param isReplication true if this is a replication event from other replica nodes,
+     * false otherwise.
+     * <p>
      * 接收client的instanceInfo注册信息是从其它peer那里拿来的InstanceInfo信息i, isReplication: 是不是从隔壁的eureka-service拿来的.
      * 1. 注册到自己的registry表里
      * 2. 同步到peer那里.
@@ -599,7 +598,7 @@ public class PeerAwareInstanceRegistryImpl extends AbstractInstanceRegistry impl
     /**
      * Checks if an instance is registerable in this region. Instances from other regions are rejected.
      *
-     * @param instanceInfo  th instance info information of the instance
+     * @param instanceInfo th instance info information of the instance
      * @return true, if it can be registered in this server, false otherwise.
      */
     public boolean isRegisterable(InstanceInfo instanceInfo) {
@@ -622,7 +621,6 @@ public class PeerAwareInstanceRegistryImpl extends AbstractInstanceRegistry impl
     /**
      * Replicates all eureka actions to peer eureka nodes except for replication
      * traffic to this node.
-     *
      */
     private void replicateToPeers(Action action, String appName, String id,
                                   InstanceInfo info /* optional */,
@@ -656,7 +654,6 @@ public class PeerAwareInstanceRegistryImpl extends AbstractInstanceRegistry impl
     /**
      * Replicates all instance changes to peer eureka nodes except for
      * replication traffic to this node.
-     *
      */
     private void replicateInstanceActionsToPeers(Action action, String appName,
                                                  String id, InstanceInfo info, InstanceStatus newStatus,

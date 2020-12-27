@@ -275,6 +275,8 @@ public class InstanceResource {
      *            replicated from other nodes.
      * @return response indicating whether the operation was a success or
      *         failure.
+     *
+     * 这是: DEL "apps/{appName}/{instanceId}" 接口, 用于instance主动下线
      */
     @DELETE
     public Response cancelLease(
