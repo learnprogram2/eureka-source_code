@@ -83,7 +83,9 @@ public abstract class AbstractInstanceRegistry implements InstanceRegistry {
 
     private Timer deltaRetentionTimer = new Timer("Eureka-DeltaRetentionTimer", true);
     private Timer evictionTimer = new Timer("Eureka-EvictionTimer", true);
+    // 续约rate
     private final MeasuredRate renewsLastMin;
+
 
     private final AtomicReference<EvictionTask> evictionTaskRef = new AtomicReference<EvictionTask>();
 
@@ -594,7 +596,7 @@ public abstract class AbstractInstanceRegistry implements InstanceRegistry {
 
     public void evict(long additionalLeaseMs) {
         logger.debug("Running the evict task");
-        // 1. 如果不允许下线, 就直接返回.
+        // 1. 如果不允许下线, 就直接返回.: 有一项检查是: renewsLastMin > numberOfRenewsPerMinThreshold
         if (!isLeaseExpirationEnabled()) {
             logger.debug("DS: lease expiration is currently disabled.");
             return;
@@ -1196,6 +1198,7 @@ public abstract class AbstractInstanceRegistry implements InstanceRegistry {
 
     protected void updateRenewsPerMinThreshold() {
         // 每分钟续约门槛: 之前重试次数 * (每分钟期待renewal次数) * 期待的最少续约的client数量
+        // 这里修改了, 不再简单是实例*2了.
         this.numberOfRenewsPerMinThreshold = (int) (this.expectedNumberOfClientsSendingRenews
                 * (60.0 / serverConfig.getExpectedClientRenewalIntervalSeconds())
                 * serverConfig.getRenewalPercentThreshold());
@@ -1220,6 +1223,7 @@ public abstract class AbstractInstanceRegistry implements InstanceRegistry {
     }
 
     protected void postInit() {
+        // 计数最近一分钟的续约次数
         renewsLastMin.start();
         if (evictionTaskRef.get() != null) {
             evictionTaskRef.get().cancel();

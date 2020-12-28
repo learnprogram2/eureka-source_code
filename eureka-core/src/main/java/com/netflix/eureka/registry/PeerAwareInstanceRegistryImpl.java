@@ -240,8 +240,11 @@ public class PeerAwareInstanceRegistryImpl extends AbstractInstanceRegistry impl
     public void openForTraffic(ApplicationInfoManager applicationInfoManager, int count) {
         // Renewals happen every 30 seconds and for a minute it should be a factor of 2.
         this.expectedNumberOfClientsSendingRenews = count; // 期待的client发送续约 = 重试次数: 这是什么意思???
-        // numberOfRenewsPerMinThreshold = 之前重试次数 * (每分钟期待renewal次数) * 期待的最少续约的client数量
-        updateRenewsPerMinThreshold();
+
+        // 1. 计算期望的续约门槛: numberOfRenewsPerMinThreshold = 之前重试次数 * (每分钟期待renewal次数) * 期待的最少续约的client数量
+        updateRenewsPerMinThreshold(); // 以后必须 renewsLastMin > numberOfRenewsPerMinThreshold 才会允许cancel lease
+
+
         logger.info("Got {} instances from neighboring DS node", count);
         logger.info("Renew threshold is: {}", numberOfRenewsPerMinThreshold);
         this.startupTime = System.currentTimeMillis();
