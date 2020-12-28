@@ -296,6 +296,8 @@ public abstract class AbstractInstanceRegistry implements InstanceRegistry {
      * {@link #cancel(String, String, boolean)} method is overridden by {@link PeerAwareInstanceRegistry}, so each
      * cancel request is replicated to the peers. This is however not desired for expires which would be counted
      * in the remote peers as valid cancellations, so self preservation mode would not kick-in.
+     * <p>
+     * 在这里正是驱逐.
      */
     protected boolean internalCancel(String appName, String id, boolean isReplication) {
         read.lock(); // 添加读锁.
@@ -592,12 +594,13 @@ public abstract class AbstractInstanceRegistry implements InstanceRegistry {
 
     public void evict(long additionalLeaseMs) {
         logger.debug("Running the evict task");
-
+        // 1. 如果不允许下线, 就直接返回.
         if (!isLeaseExpirationEnabled()) {
             logger.debug("DS: lease expiration is currently disabled.");
             return;
         }
 
+        // 2. 把所有过期的收集起来. 随机剔除他们.
         // We collect first all expired items, to evict them in random order. For large eviction sets,
         // if we do not that, we might wipe out whole apps before self preservation kicks in. By randomizing it,
         // the impact should be evenly distributed across all applications.
@@ -607,6 +610,7 @@ public abstract class AbstractInstanceRegistry implements InstanceRegistry {
             if (leaseMap != null) {
                 for (Entry<String, Lease<InstanceInfo>> leaseEntry : leaseMap.entrySet()) {
                     Lease<InstanceInfo> lease = leaseEntry.getValue();
+                    // 2.1. 如果现在时间已经超过上次更新时间+补偿时间和工作时间了: 这里有一个90s, 在续约的时候又有一个90s, 所以租约时间其实是180s 3分钟.
                     if (lease.isExpired(additionalLeaseMs) && lease.getHolder() != null) {
                         expiredLeases.add(lease);
                     }
@@ -614,6 +618,7 @@ public abstract class AbstractInstanceRegistry implements InstanceRegistry {
             }
         }
 
+        // 3. 补偿GC停顿或者其它的时间, 使用当前的注册size作为基础来做, 最多驱逐15%的instance.
         // To compensate for GC pauses or drifting local time, we need to use current registry size as a base for
         // triggering self-preservation. Without that we would wipe out full registry.
         int registrySize = (int) getLocalRegistrySize();
@@ -626,6 +631,7 @@ public abstract class AbstractInstanceRegistry implements InstanceRegistry {
 
             Random random = new Random(System.currentTimeMillis());
             for (int i = 0; i < toEvict; i++) {
+                // 3.1 随机选一个驱逐. 调用internalCancel
                 // Pick a random item (Knuth shuffle algorithm)
                 int next = i + random.nextInt(expiredLeases.size() - i);
                 Collections.swap(expiredLeases, i, next);
@@ -1189,6 +1195,7 @@ public abstract class AbstractInstanceRegistry implements InstanceRegistry {
     }
 
     protected void updateRenewsPerMinThreshold() {
+        // 每分钟续约门槛: 之前重试次数 * (每分钟期待renewal次数) * 期待的最少续约的client数量
         this.numberOfRenewsPerMinThreshold = (int) (this.expectedNumberOfClientsSendingRenews
                 * (60.0 / serverConfig.getExpectedClientRenewalIntervalSeconds())
                 * serverConfig.getRenewalPercentThreshold());
@@ -1217,6 +1224,7 @@ public abstract class AbstractInstanceRegistry implements InstanceRegistry {
         if (evictionTaskRef.get() != null) {
             evictionTaskRef.get().cancel();
         }
+        // 设置定时驱逐的任务: 60s检查一次.
         evictionTaskRef.set(new EvictionTask());
         evictionTimer.schedule(evictionTaskRef.get(),
                 serverConfig.getEvictionIntervalTimerInMs(),
@@ -1239,15 +1247,19 @@ public abstract class AbstractInstanceRegistry implements InstanceRegistry {
         return overriddenInstanceStatusMap.size();
     }
 
-    /* visible for testing */ class EvictionTask extends TimerTask {
+    /* visible for testing */
+    // 租约检查的定时任务: 60s一次.
+    class EvictionTask extends TimerTask {
 
         private final AtomicLong lastExecutionNanosRef = new AtomicLong(0l);
 
         @Override
         public void run() {
             try {
+                // 1. 计算两次执行的补偿时间: 65s补偿5s.
                 long compensationTimeMs = getCompensationTimeMs();
                 logger.info("Running the evict task with compensationTime {}ms", compensationTimeMs);
+                // 2. 开始驱逐.
                 evict(compensationTimeMs);
             } catch (Throwable e) {
                 logger.error("Could not run the evict task", e);
@@ -1259,16 +1271,19 @@ public abstract class AbstractInstanceRegistry implements InstanceRegistry {
          * vs the configured amount of time for execution. This is useful for cases where changes in time (due to
          * clock skew or gc for example) causes the actual eviction task to execute later than the desired time
          * according to the configured cycle.
+         * 计算补偿时间: 这个时间是task距离上次执行的时间长度.
+         * 如果两次执行间隔短于60s, 补偿0s, 超过60s, 补偿60s以上的部分
          */
         long getCompensationTimeMs() {
-            long currNanos = getCurrentTimeNano();
+            long currNanos = System.nanoTime();
             long lastNanos = lastExecutionNanosRef.getAndSet(currNanos);
             if (lastNanos == 0l) {
                 return 0l;
             }
-
+            // 两次执行的间隔 elapsed: 消逝 - 60s
             long elapsedMs = TimeUnit.NANOSECONDS.toMillis(currNanos - lastNanos);
             long compensationTime = elapsedMs - serverConfig.getEvictionIntervalTimerInMs();
+            // 如果两次执行间隔短于60s, 补偿0s, 超过60s, 补偿60s以上的部分
             return compensationTime <= 0l ? 0l : compensationTime;
         }
 

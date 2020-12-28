@@ -143,7 +143,10 @@ public class PeerAwareInstanceRegistryImpl extends AbstractInstanceRegistry impl
         this.numberOfReplicationsLastMin.start();
         this.peerEurekaNodes = peerEurekaNodes;
         initializedResponseCache();
+
+        // 在这里定时任务, 执行心跳的update
         scheduleRenewalThresholdUpdateTask();
+
         initRemoteRegionRegistry();
 
         try {
@@ -179,6 +182,8 @@ public class PeerAwareInstanceRegistryImpl extends AbstractInstanceRegistry impl
      * The renewal threshold would be used to determine if the renewals drop
      * dramatically because of network partition and to protect expiring too
      * many instances at a time.
+     * <p>
+     * 15分钟 更行一下. 续约threshold用来检测是否需要丢弃掉一个续约.
      */
     private void scheduleRenewalThresholdUpdateTask() {
         timer.schedule(new TimerTask() {
@@ -194,21 +199,25 @@ public class PeerAwareInstanceRegistryImpl extends AbstractInstanceRegistry impl
      * Populates the registry information from a peer eureka node. This
      * operation fails over to other nodes until the list is exhausted if the
      * communication fails.
+     *
+     * 从一个peer那里拿到registry, 如果通讯失败就去其它的peer那里拿.
      */
     @Override
     public int syncUp() {
         // Copy entire entry from neighboring DS node
         int count = 0;
 
+        // 最多重试RegistrySyncRetries{5}次.
         for (int i = 0; ((i < serverConfig.getRegistrySyncRetries()) && (count == 0)); i++) {
             if (i > 0) {
-                try {
+                try { // 重试之前睡一睡. 这个应该是等discoveryClient从其它的peer里拿.
                     Thread.sleep(serverConfig.getRegistrySyncRetryWaitMs());
                 } catch (InterruptedException e) {
                     logger.warn("Interrupted during registry transfer..");
                     break;
                 }
             }
+            // 1. 拿到自己本地的client里的applications: 把client里的eureka-applications都注册到自己这里.
             Applications apps = eurekaClient.getApplications();
             for (Application app : apps.getRegisteredApplications()) {
                 for (InstanceInfo instance : app.getInstances()) {
@@ -226,10 +235,12 @@ public class PeerAwareInstanceRegistryImpl extends AbstractInstanceRegistry impl
         return count;
     }
 
+    //
     @Override
     public void openForTraffic(ApplicationInfoManager applicationInfoManager, int count) {
         // Renewals happen every 30 seconds and for a minute it should be a factor of 2.
-        this.expectedNumberOfClientsSendingRenews = count;
+        this.expectedNumberOfClientsSendingRenews = count; // 期待的client发送续约 = 重试次数: 这是什么意思???
+        // numberOfRenewsPerMinThreshold = 之前重试次数 * (每分钟期待renewal次数) * 期待的最少续约的client数量
         updateRenewsPerMinThreshold();
         logger.info("Got {} instances from neighboring DS node", count);
         logger.info("Renew threshold is: {}", numberOfRenewsPerMinThreshold);
@@ -245,6 +256,8 @@ public class PeerAwareInstanceRegistryImpl extends AbstractInstanceRegistry impl
         }
         logger.info("Changing status to UP");
         applicationInfoManager.setInstanceStatus(InstanceStatus.UP);
+
+        // 自身初始化: 应该是和自己的registry管理相关的. 开启租约检查任务: EvictionTask
         super.postInit();
     }
 
@@ -600,6 +613,8 @@ public class PeerAwareInstanceRegistryImpl extends AbstractInstanceRegistry impl
      *
      * @param instanceInfo th instance info information of the instance
      * @return true, if it can be registered in this server, false otherwise.
+     *
+     *
      */
     public boolean isRegisterable(InstanceInfo instanceInfo) {
         DataCenterInfo datacenterInfo = instanceInfo.getDataCenterInfo();

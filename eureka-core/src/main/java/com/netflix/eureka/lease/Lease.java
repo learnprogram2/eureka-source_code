@@ -112,6 +112,7 @@ public class Lease<T> {
      * @param additionalLeaseMs any additional lease time to add to the lease evaluation in ms.
      */
     public boolean isExpired(long additionalLeaseMs) {
+        // 如果有驱逐的时间戳(一般没有)肯定要驱逐出去. 如果现在时间已经超过上次更新时间+补偿时间和工作时间了, 就驱逐出去.
         return (evictionTimestamp > 0 || System.currentTimeMillis() > (lastUpdateTimestamp + duration + additionalLeaseMs));
     }
 
