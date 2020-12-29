@@ -43,9 +43,8 @@ import java.net.URL;
  * <p>
  *
  * @author Karthik Ranganathan, Greg Kim
- *
+ * <p>
  * node表示一个需要共享信息的peer. 本类实现了一些共享操作.
- *
  */
 public class PeerEurekaNode {
 
@@ -103,6 +102,8 @@ public class PeerEurekaNode {
 
         String batcherName = getBatcherName();
         ReplicationTaskProcessor taskProcessor = new ReplicationTaskProcessor(targetHost, replicationClient);
+
+        // 同步里面的批处理.
         this.batchingDispatcher = TaskDispatchers.createBatchingTaskDispatcher(
                 batcherName,
                 config.getMaxElementsInPeerReplicationPool(),
@@ -113,6 +114,7 @@ public class PeerEurekaNode {
                 retrySleepTimeMs,
                 taskProcessor
         );
+        // 同步里面的非批处理-TODO 这个我还没看.
         this.nonBatchingDispatcher = TaskDispatchers.createNonBatchingTaskDispatcher(
                 targetHost,
                 config.getMaxElementsInStatusReplicationPool(),
@@ -128,14 +130,16 @@ public class PeerEurekaNode {
      * Sends the registration information of {@link InstanceInfo} receiving by
      * this node to the peer node represented by this class.
      *
-     * @param info
-     *            the instance information {@link InstanceInfo} of any instance
-     *            that is send to this instance.
-     * @throws Exception
+     * @param info the instance information {@link InstanceInfo} of any instance
+     * that is send to this instance.
+     * @throws Exception 同步注册动作给一个peer(也就是这个class的实例)
      */
     public void register(final InstanceInfo info) throws Exception {
+        // 1. 设置同步的时效期间: 默认是lease的同步间隔: 30s
         long expiryTime = System.currentTimeMillis() + getLeaseRenewalOf(info);
+        // 2. 添加一个batch的任务.
         batchingDispatcher.process(
+                // ID:  {action}#{appName}/{instanceId}
                 taskId("register", info),
                 new InstanceReplicationTask(targetHost, Action.Register, info, null, true) {
                     public EurekaHttpResponse<Void> execute() {
@@ -150,11 +154,9 @@ public class PeerEurekaNode {
      * Send the cancellation information of an instance to the node represented
      * by this class.
      *
-     * @param appName
-     *            the application name of the instance.
-     * @param id
-     *            the unique identifier of the instance.
-     * @throws Exception
+     * @param appName the application name of the instance.
+     * @param id the unique identifier of the instance.
+     * @throws Exception 同步主动下线事件: 还是会同步一个事件给batchingDispatcher
      */
     public void cancel(final String appName, final String id) throws Exception {
         long expiryTime = System.currentTimeMillis() + maxProcessingDelayMs;
@@ -183,24 +185,25 @@ public class PeerEurekaNode {
      * this class. If the instance does not exist the node, the instance
      * registration information is sent again to the peer node.
      *
-     * @param appName
-     *            the application name of the instance.
-     * @param id
-     *            the unique identifier of the instance.
-     * @param info
-     *            the instance info {@link InstanceInfo} of the instance.
-     * @param overriddenStatus
-     *            the overridden status information if any of the instance.
-     * @throws Throwable
+     * @param appName the application name of the instance.
+     * @param id the unique identifier of the instance.
+     * @param info the instance info {@link InstanceInfo} of the instance.
+     * @param overriddenStatus the overridden status information if any of the instance.
+     * <p>
+     * 同步心跳:
+     * 1. 设置过期时间是lease同步的间隔
+     * 2. 创建一个同步task, 把任务放进去
      */
     public void heartbeat(final String appName, final String id,
                           final InstanceInfo info, final InstanceStatus overriddenStatus,
                           boolean primeConnection) throws Throwable {
         if (primeConnection) {
-            // We do not care about the result for priming request.
+            // We do not care about the result for priming(启动) request.
             replicationClient.sendHeartBeat(appName, id, info, overriddenStatus);
             return;
         }
+
+        // 1. 创建一个同步task
         ReplicationTask replicationTask = new InstanceReplicationTask(targetHost, Action.Heartbeat, info, overriddenStatus, false) {
             @Override
             public EurekaHttpResponse<InstanceInfo> execute() throws Throwable {
@@ -225,6 +228,7 @@ public class PeerEurekaNode {
                 }
             }
         };
+        // 2. 设置过期时间是lease同步的间隔, 把任务放进去
         long expiryTime = System.currentTimeMillis() + getLeaseRenewalOf(info);
         batchingDispatcher.process(taskId("heartbeat", info), replicationTask, expiryTime);
     }
@@ -237,10 +241,8 @@ public class PeerEurekaNode {
      * ASG information is used for determining if the instance should be
      * registered as {@link InstanceStatus#DOWN} or {@link InstanceStatus#UP}.
      *
-     * @param asgName
-     *            the asg name if any of this instance.
-     * @param newStatus
-     *            the new status of the ASG.
+     * @param asgName the asg name if any of this instance.
+     * @param newStatus the new status of the ASG.
      */
     public void statusUpdate(final String asgName, final ASGStatus newStatus) {
         long expiryTime = System.currentTimeMillis() + maxProcessingDelayMs;
@@ -256,17 +258,12 @@ public class PeerEurekaNode {
     }
 
     /**
-     *
      * Send the status update of the instance.
      *
-     * @param appName
-     *            the application name of the instance.
-     * @param id
-     *            the unique identifier of the instance.
-     * @param newStatus
-     *            the new status of the instance.
-     * @param info
-     *            the instance information of the instance.
+     * @param appName the application name of the instance.
+     * @param id the unique identifier of the instance.
+     * @param newStatus the new status of the instance.
+     * @param info the instance information of the instance.
      */
     public void statusUpdate(final String appName, final String id,
                              final InstanceStatus newStatus, final InstanceInfo info) {
@@ -286,12 +283,9 @@ public class PeerEurekaNode {
     /**
      * Delete instance status override.
      *
-     * @param appName
-     *            the application name of the instance.
-     * @param id
-     *            the unique identifier of the instance.
-     * @param info
-     *            the instance information of the instance.
+     * @param appName the application name of the instance.
+     * @param id the unique identifier of the instance.
+     * @param info the instance information of the instance.
      */
     public void deleteStatusOverride(final String appName, final String id, final InstanceInfo info) {
         long expiryTime = System.currentTimeMillis() + maxProcessingDelayMs;

@@ -1,19 +1,5 @@
 package com.netflix.eureka.util.batcher;
 
-import java.util.ArrayList;
-import java.util.Deque;
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.BlockingDeque;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingDeque;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.Semaphore;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-
 import com.netflix.eureka.util.batcher.TaskProcessor.ProcessingResult;
 import com.netflix.servo.annotations.DataSourceType;
 import com.netflix.servo.annotations.Monitor;
@@ -24,6 +10,10 @@ import com.netflix.servo.monitor.Timer;
 import com.netflix.servo.stats.StatsConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static com.netflix.eureka.Names.METRIC_REPLICATION_PREFIX;
 
@@ -89,6 +79,7 @@ class AcceptorExecutor<ID, T> {
 
     private final Timer batchSizeMetric;
 
+    // 构造器:
     AcceptorExecutor(String id,
                      int maxBufferSize,
                      int maxBatchingSize,
@@ -99,14 +90,16 @@ class AcceptorExecutor<ID, T> {
         this.maxBufferSize = maxBufferSize;
         this.maxBatchingSize = maxBatchingSize;
         this.maxBatchingDelay = maxBatchingDelay;
+        // 任务分发
         this.trafficShaper = new TrafficShaper(congestionRetryDelayMs, networkFailureRetryMs);
 
+        // 1. 创建 acceptorThread
         ThreadGroup threadGroup = new ThreadGroup("eurekaTaskExecutors");
         this.acceptorThread = new Thread(threadGroup, new AcceptorRunner(), "TaskAcceptor-" + id);
         this.acceptorThread.setDaemon(true);
         this.acceptorThread.start();
 
-        final double[] percentiles = {50.0, 95.0, 99.0, 99.5};
+        final double[] percentiles = {50.0, 95.0, 99.0, 99.5}; // 这应该是监控的一些东西
         final StatsConfig statsConfig = new StatsConfig.Builder()
                 .withSampleSize(1000)
                 .withPercentiles(percentiles)
@@ -180,12 +173,16 @@ class AcceptorExecutor<ID, T> {
         return singleItemWorkQueue.size() + batchWorkQueue.size();
     }
 
+    // 本质就是
+    // 1. 把requestQueue和acceptorQueue的任务放到processingOrder队列里
+    // 2. 检查processingOrder里面是否满足制作批次, 如果批次到了, 把processingOrder的任务制作一个批次放到batchWorkQueue队列里
     class AcceptorRunner implements Runnable {
         @Override
         public void run() {
             long scheduleTime = 0;
             while (!isShutdown.get()) {
                 try {
+                    // 1. 把 ReprocessQueue&acceptorQueue的任务都放进processingOrder里, 把任务放进Pending map里.
                     drainInputQueues();
 
                     int totalItems = processingOrder.size();
@@ -194,11 +191,16 @@ class AcceptorExecutor<ID, T> {
                     if (scheduleTime < now) {
                         scheduleTime = now + trafficShaper.transmissionDelay();
                     }
+
+                    // 2. 到了规定时间, 就开始
                     if (scheduleTime <= now) {
+                        // 2.1 如果批次够了(有任务到期/processingQueue满了), 就把processingQueue的都放到batchWorkQueue里面
                         assignBatchWork();
+                        // 2.2 把processingQueue的过期任务放到singleItemWorkQueue里
                         assignSingleItemWork();
                     }
 
+                    // 3. 如果没有变化就睡一会.
                     // If no worker is requesting data or there is a delay injected by the traffic shaper,
                     // sleep for some time to avoid tight loop.
                     if (totalItems == processingOrder.size()) {
@@ -219,12 +221,16 @@ class AcceptorExecutor<ID, T> {
 
         private void drainInputQueues() throws InterruptedException {
             do {
+                // 1. ReprocessQueue的 把任务归到pending map里, 然后添加到processOrder里
                 drainReprocessQueue();
+                // 2. acceptorQueue的 task放到processingOrder里, 标记任务到pending Map里
                 drainAcceptorQueue();
 
                 if (isShutdown.get()) {
                     break;
                 }
+
+                // 3. 如果两个input Queue 都空了, 就等一等
                 // If all queues are empty, block for a while on the acceptor queue
                 if (reprocessQueue.isEmpty() && acceptorQueue.isEmpty() && pendingTasks.isEmpty()) {
                     TaskHolder<ID, T> taskHolder = acceptorQueue.poll(10, TimeUnit.MILLISECONDS);
@@ -236,21 +242,28 @@ class AcceptorExecutor<ID, T> {
         }
 
         private void drainAcceptorQueue() {
+            // 只要不满, 就拿出来 把task放到processingOrder里, 标记任务到pending Map里. .
             while (!acceptorQueue.isEmpty()) {
                 appendTaskHolder(acceptorQueue.poll());
             }
         }
 
+        // 排干 reprocessQueue: 把任务归到pending map里, 然后添加到processOrder里
         private void drainReprocessQueue() {
             long now = System.currentTimeMillis();
+            // 1. 如果reprocessQueue有数据还不满, 就执行
             while (!reprocessQueue.isEmpty() && !isFull()) {
+                // 1. 拿到task
                 TaskHolder<ID, T> taskHolder = reprocessQueue.pollLast();
                 ID id = taskHolder.getId();
                 if (taskHolder.getExpiryTime() <= now) {
+                    // 2. 过期直接计数
                     expiredTasks++;
                 } else if (pendingTasks.containsKey(id)) {
+                    // 3. 如果任务正在pending, 就放弃.
                     overriddenTasks++;
                 } else {
+                    // 4. 添加到pending-开始执行了, 然后添加到processOrder里
                     pendingTasks.put(id, taskHolder);
                     processingOrder.addFirst(id);
                 }
@@ -266,6 +279,7 @@ class AcceptorExecutor<ID, T> {
                 pendingTasks.remove(processingOrder.poll());
                 queueOverflows++;
             }
+            // 把task放到pending Map里. 放到processingOrder里.
             TaskHolder<ID, T> previousTask = pendingTasks.put(taskHolder.getId(), taskHolder);
             if (previousTask == null) {
                 processingOrder.add(taskHolder.getId());
@@ -274,6 +288,7 @@ class AcceptorExecutor<ID, T> {
             }
         }
 
+        // 把processingQueue的过期任务放到singleItemWorkQueue里
         void assignSingleItemWork() {
             if (!processingOrder.isEmpty()) {
                 if (singleItemWorkRequests.tryAcquire(1)) {
@@ -292,12 +307,15 @@ class AcceptorExecutor<ID, T> {
             }
         }
 
+        // 如果批次够了(有任务到期/processingQueue满了), 就把processingQueue的都放到batchWorkQueue里面
         void assignBatchWork() {
+            // 如果processingOrder有任务到期了或者满了, 就开始
             if (hasEnoughTasksForNextBatch()) {
                 if (batchWorkRequests.tryAcquire(1)) {
                     long now = System.currentTimeMillis();
                     int len = Math.min(maxBatchingSize, processingOrder.size());
                     List<TaskHolder<ID, T>> holders = new ArrayList<>(len);
+                    // 如果没有处理完, 而且processingQueue里面还有, 就把任务都倒到holders里
                     while (holders.size() < len && !processingOrder.isEmpty()) {
                         ID id = processingOrder.poll();
                         TaskHolder<ID, T> holder = pendingTasks.remove(id);
@@ -311,6 +329,7 @@ class AcceptorExecutor<ID, T> {
                         batchWorkRequests.release();
                     } else {
                         batchSizeMetric.record(holders.size(), TimeUnit.MILLISECONDS);
+                        // 把holders放进batchWorkQueue
                         batchWorkQueue.add(holders);
                     }
                 }

@@ -1,13 +1,5 @@
 package com.netflix.eureka.util.batcher;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-
 import com.netflix.eureka.util.batcher.TaskProcessor.ProcessingResult;
 import com.netflix.servo.annotations.DataSourceType;
 import com.netflix.servo.annotations.Monitor;
@@ -17,6 +9,14 @@ import com.netflix.servo.monitor.StatsTimer;
 import com.netflix.servo.stats.StatsConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static com.netflix.eureka.Names.METRIC_REPLICATION_PREFIX;
 
@@ -169,6 +169,7 @@ class TaskExecutors<ID, T> {
         }
     }
 
+    // 这个是批处理的线程,
     static class BatchWorkerRunnable<ID, T> extends WorkerRunnable<ID, T> {
 
         BatchWorkerRunnable(String workerName,
@@ -179,14 +180,18 @@ class TaskExecutors<ID, T> {
             super(workerName, isShutdown, metrics, processor, acceptorExecutor);
         }
 
+        // 从batchWorkQueue批队列里拿一个批次执行.
         @Override
         public void run() {
             try {
                 while (!isShutdown.get()) {
+                    // 1. 从batchWorkQueue批队列里拿一个批次
                     List<TaskHolder<ID, T>> holders = getWork();
                     metrics.registerExpiryTimes(holders);
 
+                    // 2. 从批次里拿任务队列出来.
                     List<T> tasks = getTasksOf(holders);
+                    // 3. 开始执行, 判断结果.
                     ProcessingResult result = processor.process(tasks);
                     switch (result) {
                         case Success:
@@ -208,9 +213,12 @@ class TaskExecutors<ID, T> {
             }
         }
 
+        // 从batchWorkQueue批队列里拿一个批次.
         private List<TaskHolder<ID, T>> getWork() throws InterruptedException {
+            // 1. 拿到batchWorkQueue
             BlockingQueue<List<TaskHolder<ID, T>>> workQueue = taskDispatcher.requestWorkItems();
             List<TaskHolder<ID, T>> result;
+            // 2. 等一会等到batch队列里有批次, 然后返回
             do {
                 result = workQueue.poll(1, TimeUnit.SECONDS);
             } while (!isShutdown.get() && result == null);

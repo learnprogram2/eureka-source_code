@@ -24,6 +24,8 @@ import com.netflix.eureka.util.batcher.TaskProcessor.ProcessingResult;
  * depending on this feedback.
  *
  * @author Tomasz Bak
+ *
+ * 任务分发, 根据优先度发给不同的worker.
  */
 class TrafficShaper {
 
