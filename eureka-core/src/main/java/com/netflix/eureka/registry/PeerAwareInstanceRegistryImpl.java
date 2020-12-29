@@ -490,6 +490,11 @@ public class PeerAwareInstanceRegistryImpl extends AbstractInstanceRegistry impl
         }
     }
 
+    /**
+     * 这里是自我保护机制的检查: 在这里判断是否可以摘除
+     * 1. 是否配置了允许过期
+     * 2. 上一分钟的续约数量 > 续约期待值(numberOfRenewsPerMinThreshold, 每15分钟更新)
+     */
     @Override
     public boolean isLeaseExpirationEnabled() {
         if (!isSelfPreservationModeEnabled()) {
